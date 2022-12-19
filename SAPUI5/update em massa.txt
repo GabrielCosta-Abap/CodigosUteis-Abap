@@ -1,0 +1,81 @@
+			onSubmit: function(oEvent){
+				var table   = this.getView().byId('table')
+				var oModel  = this.getView().getModel() 
+				var oTabLine = {}
+				var that = this
+				var url = ''
+				var changeSetId = "randomgroupId"
+				var updateSuccessMessage = this.getView().getModel("i18n").getResourceBundle().getText("updateSuccessMessage")
+				var updateErrorMessage   = this.getView().getModel("i18n").getResourceBundle().getText("updateErrorMessage")
+				var mParameters = {  
+					"groupId": changeSetId,  
+					// "changeSetId": changeSetId,
+					success: function(odata, response){
+						this.getView().setBusy(false)
+						if (response){
+
+							MessageBox.show(
+								updateSuccessMessage.replace('{0}', ), {
+									icon: MessageBox.Icon.SUCCESS,
+									title: "Sucesso",
+									actions: [MessageBox.Action.OK],
+									onClose: function(oAction) { 
+										
+									}
+								}
+							);
+						}
+								
+					}.bind(this),
+					error: function(error){
+						this.getView().setBusy(false)
+
+						MessageBox.show(
+							updateErrorMessage, {
+								icon: MessageBox.Icon.ERROR,
+								title: "Erro",
+								actions: [MessageBox.Action.OK],
+								onClose: function(oAction) { 
+								 
+								}
+							}
+						);
+
+					}.bind(this) 
+				};
+
+				var count = 0
+				this.getView().setBusy(true)
+				table.getSelectedItems().forEach(function(item){
+
+						var cells = item.getCells()
+						
+						oTabLine.Bukrs			  = that.oAuthValues.Gbukrs || '',
+						oTabLine.Werks    		  =  that.oAuthValues.GWerks || '',
+						oTabLine.Rsnum    		  =  cells[0].getText(),
+						oTabLine.Rspos    		  =  cells[1].getText(),
+						oTabLine.Rsart 			  =  cells[10].getText(),
+						oTabLine.Matnr   		  =  cells[2].getText(),
+						oTabLine.Maktx   		  =  cells[3].getText(),
+						oTabLine.Charg   		  =  cells[4].getText(),
+						oTabLine.Bdmng   		  =  cells[5].getText(), 
+						oTabLine.Meins   		  =  cells[6].getText(),
+						oTabLine.Bname 			  =  cells[9].getText(),
+						oTabLine.NameText		  =  cells[7].getText(),
+						oTabLine.Status 		  =  oEvent.getSource().getId().includes('btnDisponivel') ? '2': '5',
+						oTabLine.Descricao_Status =  cells[8].getText(),
+
+					// monta url do PUT
+					url = "/ZGEMMT079_LISTVIEW(Bukrs='" + oTabLine.Bukrs +
+											"',Werks='" + oTabLine.Werks +
+											"',Rsnum='" + oTabLine.Rsnum +
+											"',Rspos='" + oTabLine.Rspos +
+											"',Rsart='" + oTabLine.Rsart + "')"
+
+					count+=1							
+					mParameters.changeSetId = 'changeset' + count 
+					oModel.update(url ,oTabLine, mParameters)					
+					oModel.submitChanges(mParameters);  
+				})
+				
+			},

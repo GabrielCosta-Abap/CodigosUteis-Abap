@@ -1,0 +1,36 @@
+*--- FS - GC - CH 8883 - 21.01.2019----------------------------------*
+*--- Insere Estoque Reavaliado no ALV--------------------------------*
+
+    IF bestand1-endwert IS INITIAL.  "--- Somente se o saldo final estiver vazio.
+
+      READ TABLE lt_mbewh INTO DATA(ls_mbewh) WITH KEY matnr = bestand1-matnr
+                                                       bwkey = COND #( WHEN bestand1-werks IS NOT INITIAL
+                                                                       THEN bestand1-werks
+                                                                       ELSE bestand1-bwkey ).
+      APPEND VALUE #(
+        "Chaves
+        matnr = bestand1-matnr
+        werks = COND #( WHEN bestand1-werks IS NOT INITIAL
+          THEN bestand1-werks
+          ELSE bestand1-bwkey )
+
+        "Dados do somatorio
+        maktx = TEXT-144                                "'Estoque Reavaliado'
+        menge = abs( bestand1-haben )                   "'Quantidade'
+        meins = bestand1-meins                          "'un. medida'
+        dmbtr = ( ls_mbewh-verpr * abs( bestand1-haben ) ) / 1000 "'valor estoque reavaliado'
+        waers = bestand1-waers                          "'moeda'
+
+        "Cor da linha
+        farbe_pro_feld = VALUE #( FOR ls_field IN fieldcat[]
+                          ( fieldname = ls_field-fieldname
+                            color-col = 7
+                            color-int = 1
+                            color-inv = 0 )
+                         )
+      ) TO g_t_belege1[].
+
+      CLEAR ls_mbewh.
+
+    ENDIF.
+*--------------------------------------------------------------------*

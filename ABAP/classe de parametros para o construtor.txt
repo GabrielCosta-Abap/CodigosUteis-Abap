@@ -1,0 +1,100 @@
+*&---------------------------------------------------------------------*
+*& Report ZT45_02_EXTRA_1
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZT45_02_EXTRA_1.
+
+DATA v_tipo TYPE snwd_bpa-bp_role.
+SELECT-OPTIONS s_tipo FOR v_tipo.
+
+DATA v_moeda TYPE snwd_bpa-currency_code.
+SELECT-OPTIONS s_moeda FOR v_moeda.
+
+DATA v_pais TYPE snwd_ad-country.
+SELECT-OPTIONS s_pais FOR v_pais.
+
+CLASS lcl_parametros DEFINITION.
+  PUBLIC SECTION.
+    TYPES:
+      tt_ra_tipo TYPE RANGE OF snwd_bpa-bp_role,
+      tt_ra_moeda TYPE RANGE OF snwd_bpa-currency_code,
+      tt_ra_pais TYPE RANGE OF snwd_ad-country.
+
+    DATA: ra_t_tipo TYPE tt_ra_tipo,
+          ra_t_moeda TYPE tt_ra_moeda,
+          ra_t_pais TYPE tt_ra_pais.
+ENDCLASS.
+
+CLASS lcl_relatorio DEFINITION.
+  PUBLIC SECTION.
+    DATA r_parametros TYPE REF TO lcl_parametros.
+    DATA t_parceiro TYPE TABLE OF snwd_bpa.
+
+    " Injeção de dependencia
+    METHODS constructor
+      IMPORTING
+        ir_parametros TYPE REF TO lcl_parametros.
+
+    METHODS seleciona.
+
+    METHODS imprime.
+ENDCLASS.
+
+CLASS lcl_relatorio IMPLEMENTATION.
+  METHOD constructor.
+    me->r_parametros = ir_parametros. " Injeção dedependencia
+  ENDMETHOD.
+
+  METHOD seleciona.
+
+    SELECT bp_id
+           company_name
+      FROM snwd_bpa AS bpa
+      JOIN snwd_ad AS ad
+        ON bpa~address_guid = ad~node_key
+      INTO CORRESPONDING FIELDS OF TABLE t_parceiro
+     WHERE bp_role IN me->r_parametros->ra_t_tipo
+       AND currency_code IN r_parametros->ra_t_moeda
+       AND ad~country IN me->r_parametros->ra_t_pais.
+
+  ENDMETHOD.
+
+  METHOD imprime.
+
+    DATA ls_parceiro TYPE snwd_bpa.
+
+    LOOP AT t_parceiro INTO ls_parceiro.
+      WRITE:
+        /
+        ls_parceiro-bp_id,
+        ls_parceiro-company_name.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+START-OF-SELECTION.
+  DATA r_parametros TYPE REF TO lcl_parametros.
+  DATA r_relatorio TYPE REF TO lcl_relatorio.
+
+  CREATE OBJECT r_parametros.
+  r_parametros->ra_t_tipo = s_tipo[].
+  r_parametros->ra_t_moeda = s_moeda[].
+  r_parametros->ra_t_pais = s_pais[].
+
+  CREATE OBJECT r_relatorio
+    EXPORTING
+      ir_parametros = r_parametros.
+
+  r_relatorio->seleciona( ).
+
+  IF r_relatorio->t_parceiro IS INITIAL.
+    MESSAGE 'Nenhum registro encontrado'
+      TYPE 'S'
+       DISPLAY LIKE 'E'.
+    STOP. " Comando nao pode ser usado dentro de classes
+  ENDIF.
+
+  r_relatorio->imprime( ).

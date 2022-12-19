@@ -1,0 +1,692 @@
+*&---------------------------------------------------------------------*
+*& Report.....: YAMRSNFE005
+*& Name.......: Report to call
+*& Consulting.: Apice Consultoria
+*& Author.....: Ricardo Rodrigues
+*& Date.......: 13.08.2012
+*& transpõe arquivo de um diretório para outro
+*&---------------------------------------------------------------------*
+
+
+REPORT  yamrsnfe005.
+
+* ALV
+TYPE-POOLS: slis.
+
+TYPES: BEGIN OF y_text,
+    campo(15000) TYPE c,
+      END OF y_text.
+
+DATA: it_tex TYPE TABLE OF y_text,
+      wa_tex TYPE y_text.
+DATA: vl_string TYPE string.
+
+* Tipos
+TYPES: BEGIN OF y_xml,
+  xml TYPE string,
+       END OF y_xml.
+
+TYPES: BEGIN OF y_alv,
+  docnum  TYPE c LENGTH 10,
+  arquivo TYPE c LENGTH 60,
+  msg     TYPE c LENGTH 200,
+       END OF y_alv.
+
+* Tabelas para tratar os arquivos do diretório
+DATA: t_arq_win LIKE sdokpath OCCURS 0 WITH HEADER LINE,
+      t_dir_win LIKE sdokpath OCCURS 0 WITH HEADER LINE,
+      t_arq_uni LIKE rsfillst OCCURS 0 WITH HEADER LINE,
+      it_xml    TYPE TABLE OF y_xml,
+      wa_xml    TYPE y_xml,
+      it_alv    TYPE TABLE OF y_alv,
+      wa_alv    TYPE y_alv,
+      it_field  TYPE slis_t_fieldcat_alv,
+      wa_active TYPE j_1bnfe_active,
+      it_active TYPE TABLE OF j_1bnfe_active,
+      wa_doc    TYPE j_1bnfdoc,
+      it_doc    TYPE TABLE OF j_1bnfdoc,
+      wa_kna1   TYPE kna1,
+      wa_lfa1   TYPE lfa1,
+      it_kna1   TYPE TABLE OF kna1,
+      it_lfa1   TYPE TABLE OF lfa1.
+
+* Tabelas internas
+DATA: BEGIN OF xml_tab OCCURS 0,
+         raw(255)     TYPE x,
+      END   OF xml_tab,
+      result_xml     TYPE STANDARD TABLE OF smum_xmltb WITH HEADER LINE,
+      t_xmltmp       TYPE STANDARD TABLE OF y_xml      WITH HEADER LINE,
+      return         TYPE STANDARD TABLE OF bapiret2,
+      xmldata        TYPE xstring.
+
+*----------------------------------------------------------------------*
+* Variaveis                                                            *
+*----------------------------------------------------------------------*
+DATA: v_filename  TYPE string,
+      v_path      LIKE rlgrap-filename,
+      v_datum     TYPE sy-datum,
+      v_stcd1     TYPE stcd1,
+      v_diretorio TYPE string,
+      v_size      TYPE i,
+      v_docnum    TYPE j_1bnfdoc-docnum,
+      v_msgerror  TYPE sefs_d_crawl_error_message.
+
+*----------------------------------------------------------------------*
+* Parâmetros de Seleção                                                *
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+PARAMETERS: p_file LIKE rlgrap-filename OBLIGATORY.
+PARAMETERS: p_proc LIKE rlgrap-filename OBLIGATORY.
+PARAMETERS  c_canc AS CHECKBOX.
+SELECTION-SCREEN END OF BLOCK b1.
+
+*----------------------------------------------------------------------*
+* AT SELECTION-SCREEN                                                  *
+*----------------------------------------------------------------------*
+*Ajuda de pesquisa campo "Leitura Processamento"
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+
+  CLEAR: v_diretorio,
+         v_size.
+
+  CALL METHOD cl_gui_frontend_services=>directory_browse
+    EXPORTING
+      window_title    = 'Diretório Processamento'
+    CHANGING
+      selected_folder = v_diretorio
+    EXCEPTIONS
+      cntl_error      = 1.
+
+  CALL METHOD cl_gui_cfw=>flush
+    EXCEPTIONS
+      cntl_system_error = 1
+      cntl_error        = 2.
+
+  p_file = v_diretorio.
+
+  v_size = STRLEN( v_diretorio ) - 1.
+  IF v_size > 0.
+    IF v_diretorio+v_size(1) NE '\'.
+      CONCATENATE v_diretorio '\' INTO p_file.
+    ENDIF.
+  ENDIF.
+
+*Ajuda de pesquisa campo "Arquivos Processados"
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_proc.
+
+  CLEAR: v_diretorio,
+         v_size.
+
+  CALL METHOD cl_gui_frontend_services=>directory_browse
+    EXPORTING
+      window_title    = 'Diretório Processados'
+    CHANGING
+      selected_folder = v_diretorio
+    EXCEPTIONS
+      cntl_error      = 1.
+
+  CALL METHOD cl_gui_cfw=>flush
+    EXCEPTIONS
+      cntl_system_error = 1
+      cntl_error        = 2.
+
+  p_proc = v_diretorio.
+
+  v_size = STRLEN( v_diretorio ) - 1.
+  IF v_size > 0.
+    IF v_diretorio+v_size(1) NE '\'.
+      CONCATENATE v_diretorio '\' INTO p_proc.
+    ENDIF.
+  ENDIF.
+
+
+*----------------------------------------------------------------------*
+* START-OF-SELECTION.                                                  *
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+
+  PERFORM le_arquivos_diretorio.
+  PERFORM atualiza_dados.
+  PERFORM gera_alv.
+
+END-OF-SELECTION.
+
+*&---------------------------------------------------------------------*
+*&      Form  le_arquivos_diretorio
+*&---------------------------------------------------------------------*
+*       Read the files
+*----------------------------------------------------------------------*
+FORM le_arquivos_diretorio .
+
+  DATA: l_path   TYPE rsmrgstr-path,
+        l_lenght TYPE i.
+
+  l_path = p_file.
+
+  IF p_file(1) NE '/'.
+*   Local Files (Windows)
+    CALL FUNCTION 'TMP_GUI_DIRECTORY_LIST_FILES'
+      EXPORTING
+        directory  = p_file
+        filter     = '*.XML'
+      TABLES
+        file_table = t_arq_win
+        dir_table  = t_dir_win
+      EXCEPTIONS
+        cntl_error = 1
+        OTHERS     = 2.
+
+    IF sy-subrc <> 0.
+      MESSAGE ID sy-msgid TYPE 'W' NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+* Verifica se Possuem Arquivos a Serem Processados
+    IF t_arq_win[] IS INITIAL.
+* Carrega Mensagem de Erro
+      CONCATENATE 'Nenhum Arquivo XML Localizado no Diretório de Seleção.' '>>>' p_file INTO v_msgerror SEPARATED BY space.
+    ENDIF.
+  ELSE.
+*   Unix Files
+    CALL FUNCTION 'SUBST_GET_FILE_LIST'
+      EXPORTING
+        dirname      = l_path
+        filenm       = '*.*'
+        pattern      = '*.XML'
+      TABLES
+        file_list    = t_arq_uni
+      EXCEPTIONS
+        access_error = 1
+        OTHERS       = 2.
+    IF sy-subrc <> 0.
+    ENDIF.
+
+    DELETE t_arq_uni WHERE type EQ 'directory'.
+    SORT t_arq_uni BY name DESCENDING.
+  ENDIF.
+
+ENDFORM.                    " le_arquivos_diretorio
+
+*&---------------------------------------------------------------------*
+*&      Form  ATUALIZA_DADOS
+*&---------------------------------------------------------------------*
+*       Read files and update tables
+*----------------------------------------------------------------------*
+FORM atualiza_dados .
+
+  DATA: l_data LIKE sy-datum.
+
+* Windows
+  IF p_file(1) NE '/'.
+    LOOP AT t_arq_win.
+      PERFORM le_xml USING t_arq_win-pathname
+                           0.
+      PERFORM processa_xml USING t_arq_win-pathname.
+    ENDLOOP.
+  ELSE.
+
+* Unix
+    LOOP AT t_arq_uni.
+      PERFORM le_xml USING t_arq_uni-name
+                           t_arq_uni-len.
+      PERFORM processa_xml USING t_arq_uni-name.
+
+    ENDLOOP.
+  ENDIF.
+
+ENDFORM.                    " ATUALIZA_DADOS
+
+*&---------------------------------------------------------------------*
+*&      Form  LE_XML
+*&---------------------------------------------------------------------*
+*       Read XML files
+*----------------------------------------------------------------------*
+*      -->P_T_ARQ_WIN_PATHNAME  text
+*----------------------------------------------------------------------*
+FORM le_xml  USING p_filename
+                   p_size.
+
+
+  DATA: l_filename TYPE string,
+        l_size     TYPE i.
+  DATA: l_arqunix TYPE rlgrap-filename,
+        l_message TYPE string.
+
+  CONCATENATE p_file p_filename INTO l_filename.
+  MOVE p_size TO l_size.
+
+  REFRESH: it_xml,
+           xml_tab,
+           result_xml.
+
+  IF p_file(1) NE '/'.
+    CALL FUNCTION 'GUI_UPLOAD'
+      EXPORTING
+        filename            = l_filename
+        filetype            = 'BIN'
+        has_field_separator = ' '
+        header_length       = 0
+      IMPORTING
+        filelength          = v_size
+      TABLES
+        data_tab            = xml_tab
+      EXCEPTIONS
+        OTHERS              = 1.
+    IF sy-subrc IS NOT INITIAL.
+      EXIT.
+    ENDIF.
+  ELSE.
+    l_arqunix = l_filename.
+    OPEN DATASET l_arqunix FOR INPUT IN BINARY MODE MESSAGE l_message.
+    DO.
+      READ DATASET l_arqunix INTO xml_tab.
+      IF sy-subrc IS INITIAL.
+        APPEND xml_tab.
+        CLEAR xml_tab.
+      ELSE.
+        EXIT.
+      ENDIF.
+    ENDDO.
+    IF xml_tab IS NOT INITIAL.
+      APPEND xml_tab.
+    ENDIF.
+    CLOSE DATASET l_arqunix.
+    v_size = l_size.
+  ENDIF.
+
+  CALL FUNCTION 'SCMS_BINARY_TO_XSTRING'
+    EXPORTING
+      input_length = v_size
+    IMPORTING
+      buffer       = xmldata
+    TABLES
+      binary_tab   = xml_tab
+    EXCEPTIONS
+      failed       = 1
+      OTHERS       = 2.
+
+*  CALL FUNCTION 'SCMS_BINARY_TO_TEXT'
+*    EXPORTING
+*      input_length = v_size
+*    TABLES
+*      binary_tab   = xml_tab
+*      text_tab     = it_tex
+*    EXCEPTIONS
+*      failed       = 1
+*      OTHERS       = 2.
+
+  IF sy-subrc IS NOT INITIAL.
+    EXIT.
+  ENDIF.
+
+  CALL FUNCTION 'SMUM_XML_PARSE'
+    EXPORTING
+      xml_input = xmldata
+    TABLES
+      xml_table = result_xml
+      return    = return.
+
+  IF result_xml[] IS INITIAL.
+    CONCATENATE 'Erro na Leitura do Arquivo. ' '>>>' l_filename INTO v_msgerror SEPARATED BY space.
+  ENDIF.
+
+ENDFORM.                    " LE_XML
+
+*&---------------------------------------------------------------------*
+*&      Form  PROCESSA_XML
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM processa_xml  USING    p_t_arq_win_pathname.
+
+  DATA: off     TYPE i,
+        len     TYPE i,
+        vl_pos1 TYPE sy-fdpos,
+        vl_pos2 TYPE sy-fdpos.
+
+  DATA: vl_docnum TYPE j_1bnfdoc-docnum,
+        vl_random TYPE j_1bnfe_active-docnum9,
+        vl_check  TYPE j_1bnfe_active-cdv,
+        vl_nfnum  TYPE j_1bnfe_active-nfnum9,
+        vl_protoc TYPE j_1bnfeauthcode,
+        vl_adate  TYPE j_1bauthdate,
+        vl_atime  TYPE j_1bauthtime,
+        vl_stat   TYPE j_1bstatuscode,
+        vl_cnpj   TYPE kna1-stcd1,
+        vl_tpemis TYPE j_1bnfe_tpemis, "Add by João Sallesse on 24.July.2013" => Correct the Issue Type for the NF-e
+        vl_subrc  TYPE sy-subrc.
+
+  READ TABLE result_xml WITH KEY cname = 'nNF'.
+* New check for the CT-e by Joao Sallesse on 15/04/2013
+  IF sy-subrc <> 0.
+    READ TABLE result_xml WITH KEY cname = 'nCT'.
+    ENDIF.
+* End by Joao Sallesse
+
+  IF sy-subrc EQ 0.
+    vl_nfnum = result_xml-cvalue.
+    UNPACK vl_nfnum TO vl_nfnum.
+
+* Search CNPJ
+*    READ TABLE result_xml WITH KEY cname = 'CNPJ'.
+*    vl_cnpj = result_xml-cvalue.
+
+* Search the docnum
+    LOOP AT result_xml WHERE cname = 'CNPJ'.
+      vl_cnpj = result_xml-cvalue.
+
+* Not Canceled
+      IF c_canc NE 'X'.
+        SELECT SINGLE *
+          FROM j_1bnfe_active
+          INTO wa_active
+          WHERE nfnum9 = vl_nfnum
+            AND stcd1  = vl_cnpj
+            AND cancel NE 'X'.
+        IF sy-subrc NE 0.
+          vl_subrc = '4'.
+          CONTINUE.
+        ELSE.
+          vl_subrc = '0'.
+          EXIT.
+        ENDIF.
+
+      ELSE.
+* Canceled
+        SELECT SINGLE *
+          FROM j_1bnfe_active
+          INTO wa_active
+          WHERE nfnum9 = vl_nfnum
+            AND stcd1  = vl_cnpj
+            AND cancel EQ 'X'.
+        IF sy-subrc NE 0.
+          vl_subrc = '4'.
+          CONTINUE.
+        ELSE.
+          vl_subrc = '0'.
+          EXIT.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+
+*    SELECT SINGLE *
+*      FROM j_1bnfe_active
+*      INTO wa_active
+*      WHERE docnum = wa_doc-docnum.
+*    IF sy-subrc EQ 0.
+    IF vl_subrc EQ 0.
+
+* Update Protocol/Aut Date / Aut Time.
+* Protocol
+      READ TABLE result_xml WITH KEY cname = 'nProt'.
+      vl_protoc = result_xml-cvalue.
+
+* Auth Date /Time
+      READ TABLE result_xml WITH KEY cname = 'dhRecbto'.
+      CONCATENATE result_xml-cvalue(4) result_xml-cvalue+5(2) result_xml-cvalue+8(2) INTO vl_adate.
+      CONCATENATE result_xml-cvalue+11(2) result_xml-cvalue+14(2) result_xml-cvalue+17(2) INTO vl_atime.
+
+* Status(Code)
+      READ TABLE result_xml WITH KEY cname = 'cStat'.
+      vl_stat = result_xml-cvalue.
+
+*=>>> Insert by João Sallesse on 02.August.2013
+* Issue type (tpEmis)
+      READ TABLE result_xml WITH KEY cname = 'tpEmis'.
+      vl_tpemis = result_xml-cvalue.
+*=>>> End insert
+
+      CALL FUNCTION 'J_1B_NFE_XML_IN'
+        EXPORTING
+         i_docnum            = wa_active-docnum
+*         I_ACCKEY            =
+         i_authcode          = vl_protoc
+         i_authdate          = vl_adate
+         i_authtime          = vl_atime
+          i_code              = vl_stat
+          i_msgtyp            = '1'
+       EXCEPTIONS
+         inbound_error       = 1
+         OTHERS              = 2
+                .
+      IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+      ENDIF.
+
+*=>>> Insert by João Sallesse on 02.August.2013
+* Issue Type
+      READ TABLE result_xml WITH KEY cname = 'chNFe'.
+      IF sy-subrc <> 0.
+        READ TABLE result_xml WITH KEY cname = 'chCTe'.
+        ENDIF.
+      off = STRLEN( result_xml-cvalue ).
+      off = off - 10.
+      wa_active-docnum9 = result_xml-cvalue+off(9). "Add by João Sallesse on 07.August.2013
+      vl_tpemis = result_xml-cvalue+off(1).
+*=>>> End insert
+
+* Random Code
+      READ TABLE result_xml WITH KEY cname = 'cNF'.
+* New check for the CT-e by Joao Sallesse on 15/04/2013
+      IF sy-subrc <> 0.
+        READ TABLE result_xml WITH KEY cname = 'cCT'.
+        ENDIF.
+* End by Joao Sallesse
+      vl_random = result_xml-cvalue.
+
+* Check Digit
+      READ TABLE result_xml WITH KEY cname = 'chNFe'.
+* New check for the CT-e by Joao Sallesse on 15/04/2013
+      IF sy-subrc <> 0.
+        READ TABLE result_xml WITH KEY cname = 'chCTe'.
+        ENDIF.
+* End by Joao Sallesse
+      off = STRLEN( result_xml-cvalue ).
+      off = off - 1.
+      vl_check = result_xml-cvalue+off(1).
+
+* Update
+*      UNPACK vl_random TO vl_random.     "Commented by João Sallesse on 07.August.2013
+*      wa_active-docnum9     = vl_random. "Commented by João Sallesse on 07.August.2013
+      wa_active-cdv         = vl_check.
+      wa_active-code        = vl_stat.
+      wa_active-authcod     = vl_protoc.
+      wa_active-action_date = vl_adate.
+      wa_active-action_time = vl_atime.
+      wa_active-authdate    = vl_adate.
+      wa_active-authtime    = vl_atime.
+      WA_ACTIVE-TPEMIS      = vl_tpemis. "Add by João Sallesse on 24.July.2013" => Correct the Issue Type for the NF-e
+
+
+      CALL FUNCTION 'J_1B_NFE_UPDATE_ACTIVE' IN UPDATE TASK
+        EXPORTING
+          i_acttab           = wa_active
+*         I_HISTTAB          =
+*         I_DOC              =
+          i_updmode          = 'U'
+*         I_TRACE            = ' '
+       EXCEPTIONS
+         update_error       = 1
+         OTHERS             = 2.
+      IF sy-subrc EQ 0.
+        COMMIT WORK.
+
+* Update ALV
+        wa_alv-docnum = vl_docnum.
+        wa_alv-arquivo = p_t_arq_win_pathname.
+        wa_alv-msg     = 'Successfully Updated'.
+        APPEND wa_alv TO it_alv.
+        CLEAR wa_alv.
+
+        IF p_proc(1) NE '\'.
+          PERFORM muda_pasta_windows USING p_t_arq_win_pathname.
+        ELSE.
+          PERFORM muda_pasta_unix USING p_t_arq_win_pathname.
+        ENDIF.
+
+      ELSE.
+
+* Update ALV
+        wa_alv-docnum = wa_active-docnum.
+        wa_alv-arquivo = p_t_arq_win_pathname.
+        wa_alv-msg     = 'Unsuccessful Update'.
+        APPEND wa_alv TO it_alv.
+        CLEAR wa_alv.
+      ENDIF.
+    ELSE.
+      wa_alv-docnum  = wa_active-docnum.
+      wa_alv-arquivo = p_t_arq_win_pathname.
+      CONCATENATE 'Invoice ' vl_nfnum ' from CNPJ ' vl_cnpj ' not found' INTO wa_alv-msg RESPECTING BLANKS.
+      APPEND wa_alv TO it_alv.
+      CLEAR wa_alv.
+    ENDIF.
+
+
+  ENDIF.
+
+ENDFORM.                    " PROCESSA_XML
+
+*&---------------------------------------------------------------------*
+*&      Form  GERA_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM gera_alv .
+  DATA: lf_fieldcat TYPE slis_t_fieldcat_alv WITH HEADER LINE.
+
+  CLEAR lf_fieldcat.
+  lf_fieldcat-fieldname       = 'DOCNUM'.
+  lf_fieldcat-ref_tabname     = 'IT_ALV'.
+  lf_fieldcat-reptext_ddic    = 'Doc. Num'.
+  lf_fieldcat-outputlen       = '10'.
+  APPEND lf_fieldcat TO it_field.
+
+  CLEAR lf_fieldcat.
+  lf_fieldcat-fieldname       = 'ARQUIVO'.
+  lf_fieldcat-ref_tabname     = 'IT_ALV'.
+  lf_fieldcat-reptext_ddic    = 'File Name'.
+  lf_fieldcat-outputlen       = '60'.
+  APPEND lf_fieldcat TO it_field.
+
+  CLEAR lf_fieldcat.
+  lf_fieldcat-fieldname       = 'MSG'.
+  lf_fieldcat-ref_tabname     = 'IT_ALV'.
+  lf_fieldcat-reptext_ddic    = 'Return Msg'.
+  lf_fieldcat-outputlen       = '200'.
+  APPEND lf_fieldcat TO it_field.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+*  CALL FUNCTION 'REUSE_ALV_LIST_DISPLAY'
+       EXPORTING
+       i_callback_program = sy-repid
+       it_fieldcat        = it_field
+       i_default          = 'X'
+       i_save             = 'A'
+  TABLES
+       t_outtab           = it_alv
+  EXCEPTIONS
+       program_error      = 1
+       OTHERS             = 2.
+  IF  sy-subrc NE 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+               WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+ENDFORM.                    " GERA_ALV
+
+*&---------------------------------------------------------------------*
+*&      Form  muda_pasta_windows
+*&---------------------------------------------------------------------*
+*      Muda arquivo de Pasta
+*----------------------------------------------------------------------*
+FORM muda_pasta_windows USING p_t_arq_win_pathname.
+
+  DATA: l_filename TYPE rlgrap-filename,
+        l_desti    TYPE rlgrap-filename.
+
+  CLEAR: l_desti, l_filename.
+
+  CHECK p_file NE p_proc.
+
+  CONCATENATE p_file t_arq_win-pathname INTO l_filename.
+  CONCATENATE p_proc t_arq_win-pathname INTO l_desti.
+
+* Copia o arquivo para a nova pasta
+  CALL FUNCTION 'ISH_N2_GUI_FILE_COPY'
+    EXPORTING
+      ss_source      = l_filename
+      ss_destination = l_desti
+    EXCEPTIONS
+      error          = 1
+      OTHERS         = 2.
+
+  IF sy-subrc = 0.
+*   Deleta arquivo da pasta Inicial.
+    CALL FUNCTION 'GUI_DELETE_FILE'
+      EXPORTING
+        file_name = l_filename
+      EXCEPTIONS
+        failed    = 1
+        OTHERS    = 2.
+
+  ELSE.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+           WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+ENDFORM.                    " muda_pasta_windows
+
+*&---------------------------------------------------------------------*
+*&      Form  muda_pasta_unix
+*&---------------------------------------------------------------------*
+*       Muda arquivo de Pasta UNIX
+*----------------------------------------------------------------------*
+FORM muda_pasta_unix USING p_t_arq_win_pathname.
+
+  DATA: l_arq_orig LIKE rlgrap-filename,
+        l_arq_dest LIKE rlgrap-filename,
+        l_linha    TYPE string.
+
+  CLEAR: l_arq_orig,
+         l_arq_dest.
+
+  CONCATENATE p_file '\' t_arq_uni-name INTO l_arq_orig.
+  CONCATENATE p_proc '\' p_t_arq_win_pathname INTO l_arq_dest.
+
+* Abre arquivo destino
+  IF p_proc(1) EQ '\'.
+    OPEN DATASET l_arq_dest IN TEXT MODE FOR OUTPUT ENCODING DEFAULT IGNORING CONVERSION ERRORS.
+    IF NOT sy-subrc IS INITIAL.
+      EXIT.
+    ENDIF.
+  ENDIF.
+
+
+* Abre arquivo origem
+*  IF p_file(1) EQ '\'.
+  OPEN DATASET l_arq_orig IN TEXT MODE FOR INPUT ENCODING DEFAULT IGNORING CONVERSION ERRORS.
+  DO.
+    READ DATASET l_arq_orig INTO l_linha.
+    IF sy-subrc IS INITIAL.
+      TRANSFER l_linha TO l_arq_dest.
+    ELSE.
+      EXIT.
+    ENDIF.
+  ENDDO.
+*  ELSE.
+*    DO.
+*      LOOP AT it_tex into wa_tex.
+*        TRANSFER wa_tex-campo TO l_arq_dest.
+*      ENDLOOP.
+*      EXIT.
+*    ENDDO.
+*
+*  ENDIF.
+
+  CLOSE DATASET l_arq_orig.
+  CLOSE DATASET l_arq_dest.
+
+* Deleta o arquivo da pasta
+  DELETE DATASET l_arq_orig.
+
+ENDFORM.                    " muda_pasta_unix

@@ -1,0 +1,73 @@
+DATA g_variant TYPE disvariant.
+DATA g_layout  TYPE REF TO cl_salv_layout..
+DATA g_exit TYPE c.
+------------------------------------------------------------------------------------
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_var.
+
+  g_variant-report = sy-cprog.
+  CALL FUNCTION 'REUSE_ALV_VARIANT_F4'
+    EXPORTING
+      is_variant    = g_variant
+      i_save        = 'A'
+    IMPORTING
+      e_exit        = g_exit
+      es_variant    = g_variant
+    EXCEPTIONS
+      not_found     = 1
+      program_error = 2
+      OTHERS        = 3.
+  IF sy-subrc = 0.
+    p_var    = g_variant-variant.
+  ENDIF.
+
+------------------------------------------------------------------------------------
+
+FORM display_data .
+
+  DATA lr_table     TYPE REF TO cl_salv_table.
+  DATA lr_functions TYPE REF TO cl_salv_functions.
+  DATA lr_display   TYPE REF TO cl_salv_display_settings.
+  DATA columns      TYPE REF TO cl_salv_columns_table.
+  DATA column       TYPE REF TO cl_salv_column.
+
+  DATA: lo_layout  TYPE REF TO cl_salv_layout,
+        lf_variant TYPE slis_vari,
+        ls_key     TYPE salv_s_layout_key.
+
+  cl_salv_table=>factory(
+     IMPORTING
+     r_salv_table = lr_table
+     CHANGING
+     t_table      = gt_output
+   ).
+
+  columns = lr_table->get_columns( ).
+  columns->set_optimize( ).
+
+  column = columns->get_column( columnname = 'TOTAL_CONSUMO' ).
+  column->set_short_text( '' ).
+  column->set_medium_text( '' ).
+  column->set_long_text( 'Total Consumo' ).
+*  column->set_alignment( 3 ).
+
+*  column = columns->get_column( ' ' ).
+*  column->set_visible( abap_false ).
+
+  ls_key-report = sy-repid.
+  lo_layout = lr_table->get_layout( ).
+  lo_layout->set_key( ls_key ).
+  lo_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+  lo_layout->set_initial_layout( p_var ).
+
+  lr_functions = lr_table->get_functions( ).
+  lr_functions->set_all( abap_true ).
+
+  lr_display = lr_table->get_display_settings( ).
+  lr_display->set_list_header( 'Relatório de Peças ABC Giro/Valor ' ).
+  lr_display->set_striped_pattern( abap_true ).
+
+  lr_table->display( ).
+
+
+ENDFORM.

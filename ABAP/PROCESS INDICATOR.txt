@@ -1,0 +1,8 @@
+  PERFORM f_sapgui_progress_indicator USING 'Estruturando a lista, aguarde...'.
+
+FORM f_sapgui_progress_indicator USING pv_text.
+  CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+    EXPORTING
+      percentage = 0
+      text       = pv_text.
+ENDFORM.

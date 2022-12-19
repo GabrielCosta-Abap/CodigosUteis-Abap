@@ -1,0 +1,84 @@
+      " Caso o campo cliente_telefone1 não contenha o dígito obrigatório 9, adiciona.
+        IF lv_celu CA gs_dados_campanha-cliente_telefone1+4(1) AND strlen( gs_dados_campanha-cliente_telefone1 ) = 12.
+          gs_dados_campanha-cliente_telefone1 = |{ gs_dados_campanha-cliente_telefone1(4) }| && |{ '9' }| && |{ gs_dados_campanha-cliente_telefone1+4(8) }|.
+        ENDIF.
+
+        " Caso o celular esteja preechido incorretamente, verifica se o campo
+        " telefone 1 é válido e substitui o campo celular por este.
+        IF lv_celu CA gs_dados_campanha-cliente_telefone1+4(1).
+          IF gs_dados_campanha-celular IS INITIAL.
+            CLEAR gs_dados_campanha-celular.
+            gs_dados_campanha-celular =  gs_dados_campanha-cliente_telefone1.
+          ENDIF.
+
+          IF strlen( gs_dados_campanha-celular ) = 12 AND lv_fixo CA gs_dados_campanha-celular+4(1).
+            CLEAR gs_dados_campanha-celular.
+            gs_dados_campanha-celular =  gs_dados_campanha-cliente_telefone1.
+          ENDIF.
+
+          IF strlen( gs_dados_campanha-celular ) = 12 AND lv_celu CA gs_dados_campanha-celular+4(1).
+            CLEAR gs_dados_campanha-celular.
+            gs_dados_campanha-celular =  gs_dados_campanha-cliente_telefone1.
+          ENDIF.
+
+          IF strlen( gs_dados_campanha-celular ) = 13 AND gs_dados_campanha-celular+4(1) <> 9.
+            CLEAR gs_dados_campanha-celular.
+            gs_dados_campanha-celular =  gs_dados_campanha-cliente_telefone1.
+          ENDIF.
+        ENDIF.
+
+        IF gs_dados_campanha-cliente_telefone1+4(1) = 9 AND strlen( gs_dados_campanha-cliente_telefone1 ) = 13.
+          IF strlen( gs_dados_campanha-celular ) = 12 AND lv_fixo CA gs_dados_campanha-celular+4(1).
+            CLEAR gs_dados_campanha-celular.
+            gs_dados_campanha-celular =  gs_dados_campanha-cliente_telefone1.
+          ENDIF.
+        ENDIF.
+
+*--------------------------------------------------------------------*
+* Tratamento telefone2
+
+        " Caso o campo cliente_telefone2 não contenha o dígito obrigatório 9, adiciona.
+        IF lv_celu CA gs_dados_campanha-cliente_telefone2+4(1) AND strlen( gs_dados_campanha-cliente_telefone2 ) = 12.
+          gs_dados_campanha-cliente_telefone2 = |{ gs_dados_campanha-cliente_telefone2(4) }| && |{ '9' }| && |{ gs_dados_campanha-cliente_telefone2+4(8) }|.
+        ENDIF.
+
+        " Caso o celular esteja preechido incorretamente, verifica se o campo
+        " telefone 1 é válido e substitui o campo celular por este.
+        IF lv_celu CA gs_dados_campanha-cliente_telefone2+4(1).
+          IF gs_dados_campanha-celular IS INITIAL.
+            CLEAR gs_dados_campanha-celular.
+            gs_dados_campanha-celular =  gs_dados_campanha-cliente_telefone2.
+          ENDIF.
+
+          IF strlen( gs_dados_campanha-celular ) = 12 AND lv_fixo CA gs_dados_campanha-celular+4(1).
+            CLEAR gs_dados_campanha-celular.
+            gs_dados_campanha-celular =  gs_dados_campanha-cliente_telefone2.
+          ENDIF.
+
+          IF strlen( gs_dados_campanha-celular ) = 12 AND lv_celu CA gs_dados_campanha-celular+4(1).
+            CLEAR gs_dados_campanha-celular.
+            gs_dados_campanha-celular =  gs_dados_campanha-cliente_telefone2.
+          ENDIF.
+
+          IF strlen( gs_dados_campanha-celular ) = 13 AND gs_dados_campanha-celular+4(1) <> 9.
+            CLEAR gs_dados_campanha-celular.
+            gs_dados_campanha-celular =  gs_dados_campanha-cliente_telefone2.
+          ENDIF.
+        ENDIF.
+
+        IF gs_dados_campanha-cliente_telefone2+4(1) = 9 AND strlen( gs_dados_campanha-cliente_telefone2 ) = 13.
+          IF strlen( gs_dados_campanha-celular ) = 12 AND lv_fixo CA gs_dados_campanha-celular+4(1).
+            CLEAR gs_dados_campanha-celular.
+            gs_dados_campanha-celular =  gs_dados_campanha-cliente_telefone2.
+          ENDIF.
+        ENDIF.
+
+        " Por último, valida novamente o campo celular
+        " e caso não seja válido o elimina para que não
+        " seja enviado o SMS de consentimento para um
+        " telefone inconsistente ocasionando erro na interface.
+        IF strlen( gs_dados_campanha-celular ) = 12.
+          CLEAR gs_dados_campanha-celular.
+        ENDIF.
+
+_____________________________

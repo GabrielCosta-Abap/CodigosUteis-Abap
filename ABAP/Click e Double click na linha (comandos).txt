@@ -1,0 +1,10 @@
+START-OF-SELECTION.
+
+  WRITE 'Clique aqui duas vezes!'.
+  SKIP 1.
+
+  WRITE 'Clique aqui uma vez :P!' HOTSPOT.
+
+AT LINE-SELECTION.
+
+  write 'abap'.

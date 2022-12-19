@@ -1,0 +1,42 @@
+REPORT zteste_sf.
+
+
+DATA: gs_output_opt  TYPE ssfcompop,
+      gs_crl_param   TYPE ssfctrlop,
+      gs_boleto_itau TYPE zfi_boleto_itau,
+      gs_intru_itau  TYPE zfi_instrucao_itau,
+      vl_formname    TYPE tdsfname,
+      vl_job_info    TYPE ssfcrescl,
+      vl_fname       TYPE rs38l_fnam,
+      lv_bukrs       TYPE bukrs.
+
+
+vl_formname = 'Z_BOLETO_SANT'.
+
+CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+  EXPORTING
+    formname           = vl_formname
+  IMPORTING
+    fm_name            = vl_fname
+  EXCEPTIONS
+    no_form            = 1
+    no_function_module = 2
+    OTHERS             = 3.
+
+
+CALL FUNCTION vl_fname
+  EXPORTING
+    output_options     = gs_output_opt
+    control_parameters = gs_crl_param
+    user_settings      = space "'X'
+    wa_boleto          = gs_boleto_itau
+    wa_intrucao        = gs_intru_itau
+    v_bukrs            = lv_bukrs
+    v_id               = '1'
+  IMPORTING
+    job_output_info    = vl_job_info
+  EXCEPTIONS
+    formatting_error   = 1
+    internal_error     = 2
+    send_error         = 3
+    user_canceled      = 4.

@@ -1,0 +1,39 @@
+FORM message_screen USING msgno  TYPE any
+                          msgid  TYPE any
+                          msgv1  TYPE any
+                          msgv2  TYPE any
+                          msgv3  TYPE any
+                          msgv4  TYPE any
+                          screen TYPE any.
+
+* Local Variables
+  DATA: lv_modpl  TYPE t3130c-modpl VALUE 'SAPMZCBWM015',
+        lv_answer TYPE xfeld.
+
+  CALL FUNCTION 'CALL_MESSAGE_SCREEN'
+    EXPORTING
+      i_msgid          = msgid
+      i_lang           = sy-langu
+      i_msgno          = msgno
+      i_msgv1          = msgv1
+      i_msgv2          = msgv2
+      i_msgv3          = msgv3
+      i_msgv4          = msgv4
+      i_message_screen = screen
+      i_modpl          = lv_modpl
+      i_condense       = 'X'
+      i_non_lmob_envt  = 'X'
+    IMPORTING
+      o_answer         = lv_answer
+    TABLES
+      t_msg_text       = gt_msg.
+
+
+ENDFORM.
+
+        gv_msg1 = ''.
+        PERFORM message_screen USING '004' 'ZWM' gv_msg1 '' '' '' '999'.
+
+
+*** CRIAR MENSAGENS UTILIZANDO FUNÇÃO ACIMA ***
+O COLETOR NÃO ACEITA MENSAGENS NORMAIS.

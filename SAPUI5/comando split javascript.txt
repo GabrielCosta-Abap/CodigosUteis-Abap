@@ -1,0 +1,1 @@
+https://stackoverflow.com/questions/12340789/split-first-name-and-last-name-using-javascript

@@ -1,0 +1,66 @@
+report z12345.
+
+selection-screen : begin of screen 200.
+parameters p_rows type count default '100'.
+selection-screen : end of screen 200.
+
+*———————————————————————-*
+*       CLASS lcl_main DEFINITION
+*———————————————————————-*
+class lcl_main definition.
+  public section.
+    class-methods : start.
+
+  private section.
+    methods : get_data  ,
+      display.
+    class-data : lr_main type ref to lcl_main.
+    data it_mara type mara_tt.
+endclass.  "                  “lcl_main definition
+*———————————————————————-*
+*       CLASS lcl_main IMPLEMENTATION
+*———————————————————————-*
+class lcl_main implementation.
+
+method start.
+  
+  call selection-screen 200.
+
+  if sy-subrc = 0.
+
+    create object lr_main.
+    
+    lr_main->get_data( ).
+    lr_main->display( ).
+
+  endif.
+
+endmethod.
+
+method get_data.
+  
+select *
+   from mara 
+  into table me->it_mara  up to p_rows rows .
+
+endmethod.
+
+method display.
+  
+data : lr_table type ref to cl_salv_table.
+
+cl_salv_table=>factory(  
+importing
+      r_salv_table   = lr_table
+changing
+       t_table        =   me->it_mara 
+).
+
+lr_table->display( ).
+
+endmethod.
+endclass. "                   “lcl_main implementation
+
+start-of-selection.
+
+lcl_main=>start( ).

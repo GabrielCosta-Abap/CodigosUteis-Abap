@@ -1,0 +1,15 @@
+  " Recupera empresa da tela de seleção
+  ASSIGN ('(J_1BEFD_MAIN)J5_BUKRS') TO <fs_bukrs>.
+  CHECK sy-subrc = 0.
+
+  " Recupera local de negócios da tela de seleção
+  ASSIGN ('(J_1BEFD_MAIN)J5_BRNCH') TO <fs_brnch>.
+  CHECK sy-subrc = 0.
+
+  " Recupera mês da tela de seleção
+  ASSIGN ('(J_1BEFD_MAIN)P_MONTH') TO <fs_month>.
+  CHECK sy-subrc = 0.
+
+  " Recupera periodo de estoque da tela de seleção
+  ASSIGN ('(J_1BEFD_MAIN)P_YEAR') TO <fs_gjahr>.
+  CHECK sy-subrc = 0.

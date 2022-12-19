@@ -1,0 +1,6 @@
+
+	tabela para buscar ov:
+
+    SELECT SINGLE vbelv
+      FROM vbfa
+      INTO lv_vbeln.

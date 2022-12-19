@@ -1,0 +1,69 @@
+"Declarar estas variáveis
+
+data: g_variant    type disvariant.
+data repid         type sy-repid.
+
+selection-screen begin of block b2 with frame title text-002.
+parameters p_var type disvariant-variant.
+selection-screen end of block b2.
+
+
+"Implementar esta função logo abaixo da SELECTION-SCREEN com o evento at selection-screen on value-request for (parâmetro).
+
+at selection-screen on value-request for p_var.
+
+  g_variant-report = sy-repid.
+  call function 'REUSE_ALV_VARIANT_F4'
+    exporting
+      is_variant = g_variant
+      i_save     = 'U'
+    importing
+*     e_exit     = fl_exit
+      es_variant = g_variant
+    exceptions
+      not_found  = 2.
+
+  if sy-subrc = 2.
+    message id sy-msgid type 'S' number sy-msgno
+    with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  else.
+    p_var = g_variant-variant.
+  endif.
+
+
+
+" Declarar as seguintes variáveis e passar a variante no parâmetro:
+
+
+  if alv is initial.
+
+    alv = new #( i_parent = go_container ).
+
+    ls_layo-sel_mode      = 'A'.            "<<<<
+    g_variant-report       = sy-repid.          "<<<<
+    g_variant-username     = sy-uname.   "<<<<
+
+    alv->set_table_for_first_display(
+
+      exporting
+          i_structure_name              = 'ZSMMR001'
+          i_save                        = 'A'
+          i_default                     = 'X'
+          is_layout                     = ls_layo
+          is_variant                    = g_variant
+      changing
+          it_outtab                     = gt_join
+          it_fieldcatalog               = lt_fcat
+    exceptions
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        others                        = 4
+
+  ).
+
+    if sy-subrc <> 0.
+      message id sy-msgid type 'E' number sy-msgno with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    endif.
+
+

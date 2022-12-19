@@ -1,0 +1,58 @@
+**--------------------------------------------------------------------*
+** TABSTRIP - ABAS NA TELA DE SELEÇÃO
+**--------------------------------------------------------------------*
+*tables: mara.
+*
+** Começamos definindo um "Tabbed Block" na tela de seleção.
+** O nome T1 é um nome genérico, por o número de linhas define
+** quantas linhas o seu tabstrip vai ocupar na tela
+**------------------------------------------------------
+*selection-screen begin of tabbed block t1 for 10 lines.
+*
+** Você deve direcionar uma subscreen para cada uma das abas do seu
+** tabstrip. Pontos importantes:
+** USER-COMMAND -  ação gerada no sy-ucomm quando o user clicar no tab
+** DEFAUL SCREEN - deve ser direcionado para uma subscreen
+** Os nomes 'tab1' 'tab2' etc irão virar variáveis, e você deve atribuir
+** o nome da aba nessa variável (ver no evento INITIALIZATION).
+**------------------------------------------------------------------------
+*selection-screen tab (20) tab1 user-command tab1 default screen 101.
+*selection-screen tab (20) tab2 user-command tab2 default screen 102.
+*selection-screen tab (20) tab3 user-command tab3 default screen 103.
+*
+*selection-screen end of block t1.
+*
+** Subscreen 101. Declare itens como se fosse uma tela comum.
+**-----------------------------------------------------------
+*selection-screen begin of screen 101 as subscreen.
+*parameters p_dummy type char10.
+*selection-screen end of screen 101.
+*
+** Subscreen 102.
+**-----------------------------------------------------------
+*selection-screen begin of screen 102 as subscreen.
+*select-options p_dummy2 for mara-matnr.
+*selection-screen end of screen 102.
+*
+** Subscreen 103.
+**-----------------------------------------------------------
+*selection-screen begin of screen 103 as subscreen.
+*parameters: p_dummy3 radiobutton group rb01,
+*            p_dummy4 radiobutton group rb01.
+*selection-screen end of screen 103.
+*
+** No evento INITIALIZATION você deve atribuir os nomes das abas.
+** As variáveis terão os nomes declarados no SELECTION SCREEN TAB
+**---------------------------------------------------------------
+*initialization.
+*  tab1 = 'Tab 1'.
+*  tab2 = 'Tab 2'.
+*  tab3 = 'Tab 3'.
+*
+** Exemplo do SY-UCOMM. O programa vai parar no debug qdo clicarem
+** na terceira aba do tabstrip
+**----------------------------------------------------------------
+*at selection-screen.
+*  if sy-ucomm = 'TAB3'.
+**    break-point.
+*  endif.

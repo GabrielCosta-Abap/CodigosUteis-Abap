@@ -1,0 +1,514 @@
+*&---------------------------------------------------------------------*
+*& Report Z_DEMO21_SALES_ORDER_CREATE_V3
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT Z_DEMO21_SALES_ORDER_CREATE_V3.
+*---------------------------------------------------------------------------------------------------------
+* Parameters
+*---------------------------------------------------------------------------------------------------------
+SELECTION-SCREEN BEGIN OF BLOCK A1 WITH FRAME TITLE TEXT-001.
+
+* Number of sales orders
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 2(30) V_TEXT10 FOR FIELD P_SO.
+PARAMETERS: P_SO TYPE INTEGER   OBLIGATORY.
+SELECTION-SCREEN END OF LINE.
+
+* Beginn Date.
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 2(30) V_TEXT11 FOR FIELD P_BEGDA.
+PARAMETERS: P_BEGDA TYPE D OBLIGATORY.
+SELECTION-SCREEN END OF LINE.
+
+* End Date.
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 2(30) V_TEXT12 FOR FIELD P_ENDDA.
+PARAMETERS: P_ENDDA TYPE D OBLIGATORY.
+SELECTION-SCREEN END OF LINE.
+
+SELECTION-SCREEN END OF BLOCK A1.
+
+SELECTION-SCREEN BEGIN OF BLOCK A2 WITH FRAME TITLE TEXT-002.
+* Sales document type
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 2(30) V_TEXT FOR FIELD P_AUART.
+PARAMETERS: P_AUART TYPE AUART OBLIGATORY.
+SELECTION-SCREEN END OF LINE.
+
+* Sales organization
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 2(30) V_TEXT1 FOR FIELD P_VKORG.
+PARAMETERS: P_VKORG TYPE VKORG OBLIGATORY.
+SELECTION-SCREEN END OF LINE.
+
+* Distribution channel
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 2(30) V_TEXT2 FOR FIELD P_VTWEG.
+PARAMETERS: P_VTWEG TYPE VTWEG OBLIGATORY.
+SELECTION-SCREEN END OF LINE.
+
+* Division.
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 2(30) V_TEXT3 FOR FIELD P_SPART.
+PARAMETERS: P_SPART TYPE SPART OBLIGATORY.
+SELECTION-SCREEN END OF LINE.
+
+* Plant
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 2(30) V_TEXT9 FOR FIELD P_PLANT.
+PARAMETERS: P_PLANT TYPE WERKS_D OBLIGATORY.
+SELECTION-SCREEN END OF LINE.
+
+SELECTION-SCREEN END OF BLOCK A2.
+
+*---------------------------------------------------------------------------------------------------------
+* Tables and structures for BAPI_SALESORDER_CREATEFROMDAT2
+*---------------------------------------------------------------------------------------------------------
+
+DATA: W_HEADER     LIKE BAPISDHD1,
+      W_HEADERX    LIKE BAPISDHD1X,
+      W_SALESORDER LIKE BAPIVBELN-VBELN.
+DATA: T_BAPE_VBAP   LIKE STANDARD TABLE OF BAPE_VBAP
+                         WITH HEADER LINE,
+      T_BAPE_VBAPX  LIKE STANDARD TABLE OF BAPE_VBAPX
+                         WITH HEADER LINE,
+      T_EXTENSIONIN LIKE STANDARD TABLE OF BAPIPAREX
+                         WITH HEADER LINE,
+      T_ITEM        LIKE STANDARD TABLE OF BAPISDITM
+                         WITH HEADER LINE,
+      T_ITEMX       LIKE STANDARD TABLE OF BAPISDITMX
+                         WITH HEADER LINE,
+      T_PARTNER     LIKE STANDARD TABLE OF BAPIPARNR
+                         WITH HEADER LINE,
+      T_RETURN      LIKE STANDARD TABLE OF BAPIRET2
+                         WITH HEADER LINE,
+      T_SCHEDULE    LIKE STANDARD TABLE OF BAPISCHDL
+                         WITH HEADER LINE,
+      T_SCHEDULEX   LIKE STANDARD TABLE OF BAPISCHDLX
+                         WITH HEADER LINE,
+      T_TEXT        LIKE STANDARD TABLE OF BAPISDTEXT
+                         WITH HEADER LINE.
+
+DATA: V_BUCKETS   TYPE I,
+      V_SODAY     TYPE P DECIMALS 2,
+      V_DAYS      TYPE I,
+      V_DATE      TYPE D,
+      V_BEGDA_INT TYPE D,
+      V_ENDDA_INT TYPE D,
+      V_COUNTER   TYPE I VALUE 0,
+      V_CSODAY    TYPE I VALUE 0,
+      V_SOLD      TYPE KUNNR,
+      V_SHIP      TYPE KUNNR,
+      V_MATERIAL  TYPE MATNR.
+
+DATA: V_LARG      LIKE QF00-RAN_INT,
+      V_SMALL     LIKE QF00-RAN_INT,
+      V_RANRESULT LIKE QF00-RAN_INT,
+      V_QTY       TYPE I,
+      V_NUMITEMS  TYPE I.
+
+DATA: V_LINE(6)  TYPE C,
+      V_LINEC(1) TYPE C.
+
+*---------------------------------------------------------------------------------------------------------
+* Initialisation
+*---------------------------------------------------------------------------------------------------------
+
+INITIALIZATION.
+  V_TEXT   = 'Order type'.
+  V_TEXT1  = 'Sales Org'.
+  V_TEXT2  = 'Distribution channel'.
+  V_TEXT3  = 'Division'.
+  V_TEXT9  = 'Plant'.
+  V_TEXT10 = 'Number of Sales Orders'.
+  V_TEXT11 = 'Start Date'.
+  V_TEXT12 = 'End Date'.
+
+  P_AUART = 'OR'.
+  P_VKORG = '1010'.
+  P_VTWEG = '10'.
+  P_SPART = '00'.
+  P_PLANT = '1010'.
+
+* Start-of-selection.
+START-OF-SELECTION.
+
+*---------------------------------------------------------------------------------------------------------
+* Date calculation
+*---------------------------------------------------------------------------------------------------------
+
+  CALL FUNCTION 'HR_99S_INTERVAL_BETWEEN_DATES'
+    EXPORTING
+      BEGDA    = P_BEGDA
+      ENDDA    = P_ENDDA
+      TAB_MODE = ' '
+    IMPORTING
+      DAYS     = V_DAYS
+*     C_WEEKS  =
+*     C_MONTHS =
+*     C_YEARS  =
+*     WEEKS    =
+*     MONTHS   =
+*     YEARS    =
+*     D_MONTHS =
+*     MONTH_TAB       =
+    .
+*---------------------------------------------------------------------------------------------------------
+* Date conversion to internal format
+*---------------------------------------------------------------------------------------------------------
+
+  MOVE P_BEGDA TO V_BEGDA_INT.
+  MOVE P_ENDDA TO V_ENDDA_INT.
+
+*---------------------------------------------------------------------------------------------------------
+* Number of orders per day
+*---------------------------------------------------------------------------------------------------------
+
+  V_SODAY = P_SO / V_DAYS.
+  V_SODAY = CEIL( V_SODAY ).
+
+  WRITE: / 'Total Sales Orders: ',  P_SO.
+  WRITE: / 'Number of orders per day: ', V_SODAY.
+  Write: / 'Start Time: ', SY-UZEIT.
+
+
+*---------------------------------------------------------------------------------------------------------
+* Prepare data
+*---------------------------------------------------------------------------------------------------------
+
+  TYPES: BEGIN OF T_CUSTOMERS,
+                  ID    TYPE I,
+                  KUNNR TYPE KNA1-KUNNR,
+         END OF T_CUSTOMERS.
+
+  TYPES: BEGIN OF T_MATERIALS,
+                  ID    TYPE I,
+                  MATNR TYPE MARA-MATNR,
+         END OF T_MATERIALS.
+
+
+  DATA:
+    ITAB_D21_CUSTOMERS TYPE TABLE OF T_CUSTOMERS WITH HEADER LINE,
+    CUSTOMER_LINE      LIKE LINE OF ITAB_D21_CUSTOMERS,
+    ITAB_D21_MATERIALS TYPE TABLE OF T_MATERIALS WITH HEADER LINE,
+    MATERIAL_LINE      LIKE LINE OF ITAB_D21_MATERIALS.
+
+  DATA:  WA_CUSTOMERS TYPE T_CUSTOMERS,
+         WA_MATERIALS TYPE T_MATERIALS.
+
+
+  PERFORM FILL_TABLE_CUSTOMERS USING:
+        '1' '0010100001',
+        '2' '0010100002',
+        '3' '0010100004',
+        '4' '0010100005',
+        '5' '0010100006',
+        '6' '0010100100'.
+
+  PERFORM FILL_TABLE_MATERIALS USING:
+        '1' 'TG10',
+        '2' 'TG12',
+        '3' 'TG13',
+        '4' 'TG14',
+        '5' 'TG21',
+        '6' 'TG22'.
+
+
+*---------------------------------------------------------------------------------------------------------
+* Main logic
+*---------------------------------------------------------------------------------------------------------
+  V_DATE = V_BEGDA_INT.
+
+  WHILE V_COUNTER < P_SO.
+
+    WHILE V_CSODAY < V_SODAY.
+
+* get random customer
+      V_LARG = 6.
+      V_SMALL = 1.
+      PERFORM GET_RANDOM_NUMBER.
+
+      READ TABLE ITAB_D21_CUSTOMERS INDEX V_RANRESULT INTO WA_CUSTOMERS.
+      IF SY-SUBRC = 0.
+        V_SOLD = WA_CUSTOMERS-KUNNR.
+        V_SHIP = WA_CUSTOMERS-KUNNR.
+
+      ELSE.
+        WRITE 'No Customer Record Found'.
+      ENDIF.
+
+* get number of items
+      V_LARG = 4.
+      V_SMALL = 1.
+      PERFORM GET_RANDOM_NUMBER.
+
+      V_NUMITEMS = V_RANRESULT.
+
+      PERFORM ORDER_CREATION.
+
+    ENDWHILE.
+    V_CSODAY = 0.
+    PERFORM GET_NEXT_DATE.
+
+  ENDWHILE.
+
+Write: / 'End Time: ', SY-UZEIT.
+
+*---------------------------------------------------------------------------------------------------------
+*  Form Order creation
+*---------------------------------------------------------------------------------------------------------
+
+FORM ORDER_CREATION.
+
+  CLEAR : V_MATERIAL, V_RANRESULT,  V_LARG, V_SMALL, V_QTY , V_LINE, V_LINEC, SY-TABIX.
+  CLEAR : WA_MATERIALS.
+  CLEAR : W_SALESORDER, W_HEADER, W_HEADERX.
+  CLEAR : T_RETURN,T_ITEM, T_ITEMX, T_PARTNER, T_SCHEDULE, T_SCHEDULEX, T_TEXT, T_EXTENSIONIN.
+  REFRESH : T_RETURN,T_ITEM, T_ITEMX, T_PARTNER, T_SCHEDULE, T_SCHEDULEX, T_TEXT, T_EXTENSIONIN.
+
+* Header data
+
+* Sales document type
+  W_HEADER-DOC_TYPE = P_AUART.
+  W_HEADERX-DOC_TYPE = 'X'.
+
+* Sales organization
+  W_HEADER-SALES_ORG = P_VKORG.
+  W_HEADERX-SALES_ORG = 'X'.
+
+* Distribution channel
+  W_HEADER-DISTR_CHAN  = P_VTWEG.
+  W_HEADERX-DISTR_CHAN = 'X'.
+
+* Division
+  W_HEADER-DIVISION = P_SPART.
+  W_HEADERX-DIVISION = 'X'.
+
+* PO Ref
+  W_HEADER-PURCH_NO_C = 'AUTOGEN'.
+  W_HEADERX-PURCH_NO_C = 'X'.
+
+* Doc_date
+  W_HEADER-DOC_DATE = V_DATE.
+  W_HEADERX-DOC_DATE = 'X'.
+
+* Pricing date
+  W_HEADER-PRICE_DATE = V_DATE.
+  W_HEADERX-PRICE_DATE = 'X'.
+
+* Delivery date
+  W_HEADER-REQ_DATE_H = V_DATE.
+  W_HEADERX-REQ_DATE_H = 'X'.
+
+* Incoterms1
+  W_HEADER-INCOTERMS1 = 'EXW'.
+  W_HEADERX-INCOTERMS1 = 'X'.
+
+* Incoterms2
+  W_HEADER-INCOTERMS2 = 'AUTOGEN'.
+  W_HEADERX-INCOTERMS2 = 'X'.
+
+
+  W_HEADERX-UPDATEFLAG = 'I'.
+
+* Partner data
+* Sold to
+  T_PARTNER-PARTN_ROLE = 'AG'.
+  T_PARTNER-PARTN_NUMB = V_SOLD.
+  APPEND T_PARTNER.
+
+* Ship to
+  T_PARTNER-PARTN_ROLE = 'WE'.
+  T_PARTNER-PARTN_NUMB = V_SHIP.
+  APPEND T_PARTNER.
+
+* ITEM DATA
+  T_ITEMX-UPDATEFLAG = 'I'.
+
+  DO V_NUMITEMS TIMES.
+
+* Line item number.
+    V_LINEC = SY-INDEX.
+    CONCATENATE '0000' V_LINEC '0' INTO V_LINE.
+    T_ITEM-ITM_NUMBER = V_LINE.
+    T_ITEMX-ITM_NUMBER = V_LINE.
+
+
+* Material
+* get random material
+    V_LARG = 6.
+    V_SMALL = 1.
+    PERFORM GET_RANDOM_NUMBER.
+
+    READ TABLE ITAB_D21_MATERIALS INDEX V_RANRESULT INTO WA_MATERIALS.
+    IF SY-SUBRC = 0.
+      V_MATERIAL = WA_MATERIALS-MATNR.
+     ELSE.
+      WRITE 'No Material Record Found'.
+    ENDIF.
+
+    T_ITEM-MATERIAL = V_MATERIAL.
+    T_ITEMX-MATERIAL = 'X'.
+
+* Plant
+    T_ITEM-PLANT    = P_PLANT.
+    T_ITEMX-PLANT   = 'X'.
+
+* Quantity
+    V_LARG = 9.
+    V_SMALL = 1.
+    PERFORM GET_RANDOM_NUMBER.
+
+    V_QTY = V_RANRESULT.
+
+    T_ITEM-TARGET_QTY = V_QTY.
+    T_ITEMX-TARGET_QTY = 'X'.
+
+    APPEND T_ITEM.
+    APPEND T_ITEMX.
+
+*   Fill schedule lines
+    T_SCHEDULE-ITM_NUMBER = V_LINE.
+    T_SCHEDULE-SCHED_LINE = '0001'.
+    T_SCHEDULE-REQ_QTY    = V_QTY.
+    APPEND T_SCHEDULE.
+
+*   Fill schedule line flags
+   T_SCHEDULEX-ITM_NUMBER  = V_LINE.
+    T_SCHEDULEX-SCHED_LINE  = '0001'.
+    T_SCHEDULEX-UPDATEFLAG  = 'I'.
+    T_SCHEDULEX-REQ_QTY     = 'X'.
+    APPEND T_SCHEDULEX.
+
+  ENDDO.
+
+  CALL FUNCTION 'BAPI_SALESORDER_CREATEFROMDAT2'
+    EXPORTING
+*     SALESDOCUMENTIN     =
+      ORDER_HEADER_IN     = W_HEADER
+      ORDER_HEADER_INX    = W_HEADERX
+*     SENDER              =
+*     BINARY_RELATIONSHIPTYPE       =
+*     INT_NUMBER_ASSIGNMENT         =
+*     BEHAVE_WHEN_ERROR   =
+*     LOGIC_SWITCH        =
+*     TESTRUN             = W_FLAG-TESTRUN
+*     CONVERT             = ' '
+    IMPORTING
+      SALESDOCUMENT       = W_SALESORDER
+    TABLES
+      RETURN              = T_RETURN
+      ORDER_ITEMS_IN      = T_ITEM
+      ORDER_ITEMS_INX     = T_ITEMX
+      ORDER_PARTNERS      = T_PARTNER
+      ORDER_SCHEDULES_IN  = T_SCHEDULE
+      ORDER_SCHEDULES_INX = T_SCHEDULEX
+*     ORDER_CONDITIONS_IN =
+*     ORDER_CFGS_REF      =
+*     ORDER_CFGS_INST     =
+*     ORDER_CFGS_PART_OF  =
+*     ORDER_CFGS_VALUE    =
+*     ORDER_CFGS_BLOB     =
+*     ORDER_CFGS_VK       =
+*     ORDER_CFGS_REFINST  =
+*     ORDER_CCARD         =
+      ORDER_TEXT          = T_TEXT
+*     ORDER_KEYS          =
+      EXTENSIONIN         = T_EXTENSIONIN
+*     PARTNERADDRESSES    =
+    .
+* Check the return table.
+  LOOP AT T_RETURN WHERE TYPE = 'E' OR TYPE = 'A'.
+    EXIT.
+  ENDLOOP.
+
+  IF sy-subrc = 0.
+
+    WRITE: / 'Error in creating document'.
+
+  ELSE.
+
+* Commit the work.
+  COMMIT WORK AND WAIT.
+
+*  WRITE: / 'Document ', W_SALESORDER, ' created'.
+
+* Commit the work.
+
+  ENDIF.
+
+  V_CSODAY = V_CSODAY + 1.
+  V_COUNTER = V_COUNTER + 1.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  FILL_TABLE Customers
+*&---------------------------------------------------------------------*
+FORM FILL_TABLE_CUSTOMERS
+  USING P_KEY1 TYPE T_CUSTOMERS-ID
+        P_KEY2 TYPE T_CUSTOMERS-KUNNR.
+
+  CUSTOMER_LINE-ID  = P_KEY1.
+  CUSTOMER_LINE-KUNNR  = P_KEY2.
+
+  APPEND CUSTOMER_LINE TO ITAB_D21_CUSTOMERS.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  FILL_TABLE Materials
+*&---------------------------------------------------------------------*
+FORM FILL_TABLE_MATERIALS
+  USING P_KEY1 TYPE T_MATERIALS-ID
+        P_KEY2 TYPE T_MATERIALS-MATNR.
+
+  MATERIAL_LINE-ID  = P_KEY1.
+  MATERIAL_LINE-MATNR  = P_KEY2.
+
+  APPEND MATERIAL_LINE TO ITAB_D21_MATERIALS.
+  CLEAR : P_KEY1, P_KEY2.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Random Number generation
+*&---------------------------------------------------------------------*
+
+FORM GET_RANDOM_NUMBER.
+  clear V_RANRESULT.
+  DO 3 TIMES.
+    CALL FUNCTION 'QF05_RANDOM_INTEGER'
+      EXPORTING
+        RAN_INT_MAX   = V_LARG
+        RAN_INT_MIN   = V_SMALL
+      IMPORTING
+        RAN_INT       = V_RANRESULT
+      EXCEPTIONS
+        INVALID_INPUT = 1
+        OTHERS        = 2.
+    IF SY-SUBRC <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    ENDIF.
+  ENDDO.
+*  WRITE:/ 'The Number is = ' , V_RANRESULT.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      get next date
+*&---------------------------------------------------------------------*
+
+FORM GET_NEXT_DATE.
+  CALL FUNCTION 'FIMA_DATE_CREATE'
+    EXPORTING
+      I_DATE             = V_DATE
+      I_FLG_END_OF_MONTH = 'X'
+*     I_YEARS            = 0
+*     I_MONTHS           = 0
+      I_DAYS             = 1
+*     I_CALENDAR_DAYS    = 0
+*     I_SET_LAST_DAY_OF_MONTH       = ' '
+    IMPORTING
+      E_DATE             = V_DATE.
+
+ENDFORM.

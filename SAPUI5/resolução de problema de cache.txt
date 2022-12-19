@@ -1,0 +1,8 @@
+Na arcelor tem o programa ZSTGER002 que roda todas.
+
+
+/UI5/APP_INDEX_CALCULATE
+/UI2/DELETE_CACHE_AFTER_IMP
+
+https://blogs.sap.com/2017/12/22/cache-cleanup-in-sap-netweaver-gateway/
+

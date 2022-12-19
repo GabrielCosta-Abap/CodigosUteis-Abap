@@ -1,0 +1,35 @@
+  " Preenche a tabela de itens
+  CALL FUNCTION 'DDIF_NAMETAB_GET'
+    EXPORTING
+      tabname   = 'BAPIMEPOITEMX'
+    TABLES
+      dfies_tab = dfies_tab
+    EXCEPTIONS
+      not_found = 1
+      OTHERS    = 2.
+
+  LOOP AT it_item INTO DATA(ls_item).
+    MOVE-CORRESPONDING ls_item TO wa_bapiitem.
+  
+
+
+  LOOP AT dfies_tab ASSIGNING FIELD-SYMBOL(<dfies>) WHERE rollname = 'BAPIUPDATE'.
+
+      ASSIGN COMPONENT <dfies>-fieldname OF STRUCTURE wa_bapiitemx TO FIELD-SYMBOL(<fs_bapiitemx>).
+      CHECK <fs_bapiitemx> IS ASSIGNED. " not actually required?
+
+      ASSIGN COMPONENT <dfies>-fieldname OF STRUCTURE wa_bapiitem TO FIELD-SYMBOL(<fs_bapiitem>).
+
+      CHECK <fs_bapiitem> IS ASSIGNED.
+
+      IF <fs_bapiitem> IS INITIAL.
+        CLEAR <fs_bapiitemx>.
+      ELSE.
+        <fs_bapiitemx> = abap_true.
+      ENDIF.
+
+      wa_bapiitemx-po_item = wa_bapiitem-po_item.
+
+    ENDLOOP.
+
+endloop.

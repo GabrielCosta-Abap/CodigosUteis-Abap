@@ -1,0 +1,272 @@
+report znewprogram.
+
+tables: vbak, vbap, zstvbak, zstvbap.
+
+data:
+  go_alv           type ref to cl_gui_alv_grid,
+  go_alv2          type ref to cl_gui_alv_grid,
+  go_container     type ref to cl_gui_container,                        "Container para o ALV
+  go_container_cab type ref to cl_gui_container,                        "Container para o Cabeçalho
+  go_splitter      type ref to cl_gui_splitter_container.               "Divisão de tela - criação de container dinamicamente
+
+data gt_vbak type table of zstvbak with default key.
+
+data gt_vbap type table of zstvbap with default key.
+
+class lcl_eventhandler definition.
+
+  public section.
+
+    methods : handle_hotspot_click for event hotspot_click of cl_gui_alv_grid
+      importing
+          e_row_id
+          e_column_id
+          es_row_no,
+
+      handle_hotspot_click2 for event hotspot_click of cl_gui_alv_grid
+        importing
+            e_row_id
+            e_column_id
+            es_row_no.
+
+endclass.
+
+class lcl_eventhandler implementation.
+
+  method handle_hotspot_click.
+
+    read table gt_vbap
+          into data(ls_vbap)
+          index e_row_id-index.
+    if sy-subrc eq 0.
+
+      call transaction 'VA01'.
+
+    endif.
+  endmethod.
+
+  method handle_hotspot_click2.
+
+    read table gt_vbak
+    into data(ls_vbak)
+    index e_row_id-index.
+    if sy-subrc eq 0.
+
+      call transaction 'VA03'.
+
+    endif.
+
+  endmethod.
+endclass.
+
+selection-screen begin of block b1 with frame title text-001.
+select-options so_vbeln for vbak-vbeln. "numero doc vendas
+select-options so_matnr for vbap-matnr. "numero material
+select-options so_erdat for vbak-erdat. "data de criação do registro
+selection-screen end of block b1.
+
+start-of-selection.
+
+  select *
+    from vbak
+    into corresponding fields of table gt_vbak
+    where vbeln in so_vbeln
+    and   erdat in so_erdat.
+
+  select *
+    from vbap
+    into corresponding fields of table gt_vbap.
+
+  if gt_vbak is not initial and gt_vbap is not initial.
+    call screen '100'.
+  endif.
+
+form display_data.
+
+  if go_splitter is initial.
+
+    "Cria o objeto Split Container para inserir o ALV, utilizando duas linhas
+    create object go_splitter
+      exporting
+        parent  = cl_gui_container=>default_screen
+        rows    = 2
+        columns = 1
+        metric  = '0001'.
+
+    "Define o tamanho da linha 1
+    call method go_splitter->set_row_height
+      exporting
+        id                = 1
+        height            = 13
+      exceptions
+        cntl_error        = 1
+        cntl_system_error = 2
+        others            = 3.
+
+    "Define o tamanho da linha 2
+    call method go_splitter->set_row_height
+      exporting
+        id                = 2
+        height            = 13
+      exceptions
+        cntl_error        = 1
+        cntl_system_error = 2
+        others            = 3.
+
+  endif.
+
+  go_container         = go_splitter->get_container( row = 2 column = 1 ).
+  go_container_cab     = go_splitter->get_container( row = 1 column = 1 ).
+
+endform.
+
+
+form display_alv_grid.
+
+  data(ls_fcat) = value lvc_s_fcat( fieldname = 'VBELN'
+                                    hotspot = 'X' ).
+  data lt_fcat type lvc_t_fcat.
+  append ls_fcat to lt_fcat.
+
+  data(ls_layo) = value lvc_s_layo( cwidth_opt = 'A'
+                                    zebra      = abap_true
+                                    sel_mode   = 'A' ).
+
+  data: ls_variant type disvariant.
+
+  ls_variant-report = sy-repid.
+
+  if go_alv is initial.
+
+    go_alv = new #( i_parent = go_container ).
+
+*--------------------------------------------------------------------*
+
+    data ref_obj type ref to lcl_eventhandler.
+    create object ref_obj.
+
+    if gt_vbak[] is not initial.
+      set handler ref_obj->handle_hotspot_click for go_alv.
+    endif.
+*--------------------------------------------------------------------*
+
+    go_alv->set_table_for_first_display(
+
+      exporting
+          i_structure_name              = 'ZSTVBAK'
+          i_save                        = 'A'
+          is_layout                     = ls_layo
+          is_variant                    = ls_variant
+      changing
+          it_outtab                     = gt_vbak
+          it_fieldcatalog               = lt_fcat
+    exceptions
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        others                        = 4
+  ).
+    if sy-subrc <> 0.
+      message id sy-msgid type 'E' number sy-msgno with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    endif.
+
+  endif.
+endform.
+*
+form display_alv_grid2.
+
+  data(ls_fcat) = value lvc_s_fcat( fieldname = 'VBELN'
+                                    hotspot = 'X' ).
+  data lt_fcat type lvc_t_fcat.
+  append ls_fcat to lt_fcat.
+
+  data(ls_layo) = value lvc_s_layo( cwidth_opt = 'A'
+                                    zebra      = abap_true
+                                    sel_mode   = 'A' ).
+
+  data: ls_variant type disvariant.
+
+  ls_variant-report = sy-repid.
+
+  if go_alv2 is initial.
+
+    go_alv2 = new #( i_parent = go_container_cab ).
+
+*--------------------------------------------------------------------*
+
+    data ref_obj type ref to lcl_eventhandler.
+    create object ref_obj.
+    if gt_vbap[] is not initial.
+      set handler ref_obj->handle_hotspot_click2 for go_alv2.
+    endif.
+*--------------------------------------------------------------------*
+
+    go_alv2->set_table_for_first_display(
+
+      exporting
+          i_structure_name              = 'ZSTVBAP'
+          i_save                        = 'A'
+          is_layout                     = ls_layo
+          is_variant                    = ls_variant
+      changing
+          it_outtab                     = gt_vbap
+          it_fieldcatalog               = lt_fcat
+    exceptions
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        others                        = 4
+  ).
+    if sy-subrc <> 0.
+      message id sy-msgid type 'E' number sy-msgno with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    endif.
+
+  endif.
+endform.
+
+module status_0100 output.
+
+  perform display_data.
+  perform display_alv_grid.
+  perform display_alv_grid2.
+  set pf-status 'GUI_100'.
+  set titlebar 'TIT_100'.
+
+endmodule.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+module user_command_0100 input.
+
+  case sy-ucomm.
+    when 'BACK'.
+      leave to screen 0.
+    when 'CANCEL'.
+      leave program.
+    when 'EXIT'.
+      leave program.
+*    when 'SAVE'. "------------------------------------------------
+*      perform save_database.
+*      call method o_grid->refresh_table_display.
+  endcase.
+endmodule.
+*
+*form save_database.
+*
+** Getting the selected rows index
+*  call method go_alv->get_selected_rows
+*    importing
+*      et_index_rows = i_selected_rows.
+** Through the index capturing the values of selected rows
+*  loop at i_selected_rows into w_selected_rows.
+*    read table itab into wa index w_selected_rows-index.
+*    if sy-subrc eq 0.
+*      move-corresponding wa to w_modified.
+*      append w_modified to i_modified.
+*    endif.
+*  endloop.
+*  modify zmara from table i_modified.
+*
+*endform.

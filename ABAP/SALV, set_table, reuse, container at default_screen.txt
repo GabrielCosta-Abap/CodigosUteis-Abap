@@ -1,0 +1,201 @@
+*&---------------------------------------------------------------------*
+*& Report ZALV2
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zalv2.
+
+TYPES: yt_emp_pais  TYPE TABLE OF zstemppais.
+*--------------------------------------------------------------------*
+* TABELAS INTERNAS.
+*--------------------------------------------------------------------*
+DATA it_t005 TYPE TABLE OF t005.
+DATA it_t001 TYPE TABLE OF t001.
+DATA it_emp_pais TYPE yt_emp_pais.
+
+*--------------------------------------------------------------------*
+* ESTRUTURAS.---------------------------------
+*--------------------------------------------------------------------*
+DATA gs_t001 TYPE t001.
+DATA gs_t005 TYPE t005.
+
+*--------------------------------------------------------------------*
+* VARIÁVEL PARA O ALV 4
+*--------------------------------------------------------------------*
+DATA go_alv TYPE REF TO cl_gui_alv_grid.
+
+*--------------------------------------------------------------------*
+* TELA DE SELEÇÃO.
+*--------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+PARAMETERS p_empr TYPE t001-bukrs OBLIGATORY.
+PARAMETERS p_pais TYPE t005-land1.
+SELECTION-SCREEN END OF BLOCK b1.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
+PARAMETERS p_alv1 RADIOBUTTON GROUP gr1.
+PARAMETERS p_alv2 RADIOBUTTON GROUP gr1.
+PARAMETERS p_alv3 RADIOBUTTON GROUP gr1.
+PARAMETERS p_alv4 RADIOBUTTON GROUP gr1.
+SELECTION-SCREEN END OF BLOCK b2.
+
+PERFORM f_seleciona_dados.
+IF it_t001 IS INITIAL.
+  MESSAGE 'Nenhum registro encontrado' TYPE 'I' DISPLAY LIKE 'E'.
+ELSE.
+  IF p_alv1 IS NOT INITIAL.
+    PERFORM f_exibe_relatorio1.
+  ENDIF.
+*--------------------------------------------------------------------*
+  IF p_alv2 IS NOT INITIAL.
+    PERFORM f_exibe_relatorio2.
+  ENDIF.
+*--------------------------------------------------------------------*
+  IF p_alv3 IS NOT INITIAL.
+    PERFORM f_seleciona_dados2.
+    IF it_emp_pais IS INITIAL.
+      MESSAGE 'Nenhum registro encontrado' TYPE 'I' DISPLAY LIKE 'E'.
+    ELSE.
+      PERFORM f_exibe_relatorio3 USING it_emp_pais.
+    ENDIF.
+  ENDIF.
+*--------------------------------------------------------------------*
+  IF p_alv4 IS NOT INITIAL.
+    PERFORM f_seleciona_dados2.
+    IF it_emp_pais IS INITIAL.
+      MESSAGE 'Nenhum registro encontrado' TYPE 'I' DISPLAY LIKE 'E'.
+    ELSE.
+      CALL SCREEN  '0100'.
+    ENDIF.
+  ENDIF.
+ENDIF.
+
+
+*--------------------------------------------------------------------*
+* MODULES DA TELA 100
+*--------------------------------------------------------------------*
+MODULE status_0100 OUTPUT.
+  PERFORM display_alv_grid.
+  SET TITLEBAR 'TIT_0100'.
+  SET PF-STATUS 'TELA_0100'.
+ENDMODULE.
+
+MODULE user_command_0100 INPUT.
+  CASE sy-ucomm.
+    WHEN 'BACK'.
+      SET SCREEN 0.
+  ENDCASE.
+ENDMODULE.
+
+*--------------------------------------------------------------------*
+* FORM seleção de dados.
+*--------------------------------------------------------------------*
+FORM f_seleciona_dados.
+
+  SELECT *
+    FROM t001
+    INTO TABLE it_t001
+  WHERE bukrs EQ p_empr.
+ENDFORM.
+
+*--------------------------------------------------------------------*
+* FORM alv clássico.
+*--------------------------------------------------------------------*
+FORM f_exibe_relatorio1.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_structure_name = 'T001'
+    TABLES
+      t_outtab         = it_t001
+    EXCEPTIONS
+      program_error    = 1
+      OTHERS           = 2.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+ENDFORM.
+
+*--------------------------------------------------------------------*
+* FORM ALV novo.
+*--------------------------------------------------------------------*
+FORM f_exibe_relatorio2.
+
+  DATA lo_salv_tbl TYPE REF TO cl_salv_table.
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = lo_salv_tbl
+        CHANGING t_table = it_t001 ).
+      lo_salv_tbl->display( ).
+
+    CATCH cx_salv_msg INTO DATA(lo_alv_exc).
+      MESSAGE lo_alv_exc TYPE 'I' DISPLAY LIKE 'E'.
+  ENDTRY.
+ENDFORM.
+
+*--------------------------------------------------------------------*
+* FORM SELECIONA DADOS NEW SQL
+*--------------------------------------------------------------------*
+FORM f_seleciona_dados2.
+  SELECT  t001~bukrs,
+          t001~butxt,
+          t005~land1,
+          t005t~landx
+
+    FROM t001 LEFT OUTER JOIN t005 ON t005~land1 = t001~land1
+              LEFT OUTER JOIN t005t ON t005t~spras = @sy-langu AND t005t~land1 = t005~land1
+    INTO TABLE @it_emp_pais
+    WHERE bukrs EQ @p_empr.
+
+ENDFORM.
+
+*--------------------------------------------------------------------*
+* FORM ALV 3
+*--------------------------------------------------------------------*
+FORM f_exibe_relatorio3 USING t_saida TYPE yt_emp_pais.
+
+  DATA lo_salv_tbl TYPE REF TO cl_salv_table.
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = lo_salv_tbl
+        CHANGING t_table = t_saida ).
+      lo_salv_tbl->display( ).
+
+    CATCH cx_salv_msg INTO DATA(lo_alv_exc).
+      MESSAGE lo_alv_exc TYPE 'I' DISPLAY LIKE 'E'.
+  ENDTRY.
+ENDFORM.
+
+*--------------------------------------------------------------------*
+* FORM ALV PLUS
+*--------------------------------------------------------------------*
+FORM display_alv_grid.
+  DATA(ls_layo) = VALUE lvc_s_layo( cwidth_opt = 'A'
+                                    zebra = abap_true
+                                    sel_mode = 'A' ).
+
+  DATA: ls_variant TYPE disvariant.
+
+  ls_variant-report = sy-repid.
+
+  IF go_alv IS INITIAL.
+    go_alv = NEW #( i_parent = cl_gui_container=>default_screen ).
+    go_alv->set_table_for_first_display(
+      EXPORTING
+          i_structure_name              = 'ZSTEMPPAIS'
+          i_save                        = 'A'
+          is_layout                     = ls_layo
+          is_variant                    = ls_variant
+      CHANGING
+          it_outtab                     = it_emp_pais
+      EXCEPTIONS
+          invalid_parameter_combination = 1
+          program_error                 = 2
+          too_many_lines                = 3
+          OTHERS                        = 4
+    ).
+    IF sy-subrc <> 0.
+      MESSAGE ID sy-msgid TYPE 'E' NUMBER sy-msgno WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+  ENDIF.
+ENDFORM.

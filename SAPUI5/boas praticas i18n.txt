@@ -1,0 +1,244 @@
+######################################################################
+# HOW TO ORGANIZE I18N TEXTS
+#
+#   0) BASIC RULE
+#       TEXT KEYS: 
+#           - ALWAYS LOWER CASE
+#           - SEPARATE WORDS BY UNDERSCORE _    
+#       TEXT VALUES: AS THE USER SHOULD SEE
+#       EXAMPLE:
+# view_page_title=Internal Logistics 
+#
+#   1)  CONSIDER USING THE 'GENERAL' SECTION FOR 
+#       TEXTS LIKELY TO BE REUSED
+#       SORT THE KEYS ALPHABETICALLY
+#       EXAMPLE:
+##################################################
+# General Texts
+##################################################
+# general_or=Or
+# general_save=Save
+#
+#   2)  FOR EACH VIEW / FRAGMENT, A NEW SECTION
+#       EXAMPLE:
+#           GIVEN VIEW 'Station.view.xml'
+#           CREATE A COMMENT SECTION LIKE THE ROWS BELOW:
+##################################################
+# View: Station
+##################################################
+# key_1=Value 1
+# key_2=Value 2
+# key_3=Value 3
+#
+#       EXAMPLE:
+#           GIVEN FRAGMENT 'Form.fragment.xml'
+#           CREATE A COMMENT SECTION LIKE THE ROWS BELOW:
+##################################################
+# Fragment: Form
+##################################################
+# key_1=Value 1
+# key_2=Value 2
+# key_3=Value 3
+# 
+#   3)  ALL TEXT IDS SHOULD START WITH THE VIEW/FRAGMENT NAME 
+#       EXAMPLE:
+#           station_
+#           form_
+# 
+#   4) FOR TEXTS USED IN CONTROL PROPERTIES, PLEASE USE IN THIS ORDER:
+#       SORT THE TEXTS BY SCREEN LOCATION
+#
+#       a) CONTEXT (optional)
+#       b) CONTROL PROPERTY 
+#
+#       EXAMPLE:
+# <view>_<context_subcontext>_<property>=
+# menu_option_station_title=
+#
+#       OR
+#
+#       a) CONTROL TYPE
+#       b) CONTROL NAME  
+#       c) CONTROL PROPERTY  
+#
+#       EXAMPLE:
+# <view>_<controltype>_<controlname>_<property>=
+# station_input_name_placeholder=
+# 
+#   5)  FOR MESSAGE BOX AND TOASTS, USE A THE SPECIAL SECTION 'MESSAGES'
+#       EXAMPLE:
+##################################################
+# Messsages
+##################################################
+# message_settings_save_success=Settings saved successfully
+# message_settings_save_error=Settings could not be saved
+#
+#   6)  DO ** NOT ** USE ANNOTATIONS IN TRANSLATION FILES 
+#       EXAMPLE:
+# XTIT, YDES, XACT, XBLI
+#
+#   7)  ADD AN EMPTY ROW AT THE END OF EACH SECTION
+#
+######################################################################
+
+##################################################
+# Manifest.json
+##################################################
+manifest_app_title=CAP Approval
+manifest_app_description=Condition Approval and Tracking(CAT): Approver View
+
+##################################################
+# General Texts
+##################################################
+general_search=Search 
+general_save=Save
+general_ok=OK
+general_confirm=Confirm
+general_cancel=Cancel
+general_close=Close
+
+general_doc_type=Type
+general_requester=Requester
+general_responsible=Prim. Resp.
+general_date_current=Date (current)
+# general_aggreed_from=Aggreed from
+general_valid_from=Valid from
+general_price_partner=Price partner
+
+##################################################
+# Messsages
+##################################################
+message_confirmation_xxx=Do you want to xxx?
+
+message_error_general=Error. Reason: {0}
+message_error_unknown=Unknown error
+message_error_service_metadata=Failed to get service metadata
+message_error_service_call=Service request failed.\nReason: {0}
+
+message_approved=Document approved
+message_rejected=Document rejected
+message_forwarded=Document forwarded
+
+##################################################
+# View: Documents
+##################################################
+documents_title=Condition Approval and Tracking
+documents_searchfield_placeholder=Document ID
+documents_tab_pending=Pending
+documents_tab_completed=Completed
+
+##################################################
+# View: Items
+##################################################
+items_forward=Forward
+items_reject=Reject
+items_approve=Approve
+
+##################################################
+# Fragment: MasterData
+##################################################
+
+master_data_title=Master Data
+
+master_data_aggregated_pp=Aggregated PP
+master_data_net_sales_ytd=YTD Net Sales
+master_data_net_sales_py=PY Net Sales
+master_data_target_to=Target TO
+master_data_total_debts=Total Debts
+master_data_overdue_invoices=Overdue invoices
+master_data_potential=Potential
+master_data_potential_class=Potential class
+master_data_cv=CV
+master_data_crl=CRL
+master_data_customer_type=Customer Type
+
+master_data_ctl=CTL
+master_data_kam=KAM Type
+master_data_ism=ISM
+master_data_customer_address=Customer address
+master_data_payment_terms=Payment terms
+master_data_payment_terms_link=See details
+master_data_delivery_terms=Delivery terms
+master_data_delivery_terms_link=See details
+master_data_special_agreement=Spec. agreement
+master_data_additional_agreement=Additional agreement
+
+master_data_date_pricing=Price date
+master_data_date_pricing_from=Pricing valid from
+master_data_date_pricing_to=Pricing valid to
+
+master_data_date_current=Date (current)
+master_data_reference=Your reference
+master_data_ssm=Customer SSM %
+master_data_ssm_average=# of month SSM average
+master_data_expiry_date=Quotation validity
+master_data_quotation_status=Quotation status
+master_data_price_validity=Price validity
+master_data_price_group=Price group
+master_data_condition_reason=Condition reason
+master_data_comments=Comments
+
+
+##################################################
+# View: Items
+##################################################
+items_material_title=Material
+items_product_group_title=Product Group
+items_price_class_title=Price Class
+
+##################################################
+# View: ItemDetails
+##################################################
+item_details_material_title=Material
+item_details_product_group_title=Product Group
+item_details_price_class_title=Price Class
+
+
+##################################################
+# View: NotFound
+##################################################
+not_found_title=Page not found
+not_found_text=URL is invalid
+not_found_home=Return to home 
+
+##################################################
+# Fragment: Material
+##################################################
+material_table_title=Materials
+
+##################################################
+# Fragment: ProductGroup
+##################################################
+product_group_table_title=Product Groups
+
+##################################################
+# Fragment: Comments
+##################################################
+# 0 = Action    | 1 = Document Id
+# Example: Approve 1234
+# Example: Reject 5678
+comments_title={0} {1}
+comments_label_text=Comments
+
+
+##################################################
+# Fragment: PriceClass
+##################################################
+price_class_table_title=Price Classes
+
+##################################################
+# Fragment: PaymentTerms
+##################################################
+payment_terms_old=Old
+payment_terms_new=New
+payment_terms_days=Days
+payment_terms_condition=Condition (%)
+
+##################################################
+# Fragment: DeliveryTerms
+##################################################
+delivery_terms_old=Old
+delivery_terms_new=New
+delivery_terms_shipping=Shipping costs
+delivery_terms_packing=Packing costs
+delivery_terms_limit=Value Limit

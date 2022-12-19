@@ -1,0 +1,846 @@
+REPORT zpfir009.
+*-----------------------------------------------------------------------
+* Tabelas do Dicionário de Dados
+*-----------------------------------------------------------------------
+TABLES: bsik,     " Contabilidade: índice secundário para fornecedores
+        bseg.     " Segmento do documento contabilidade financeira
+*-----------------------------------------------------------------------
+* Definição de Gurpos de Tipos
+*-----------------------------------------------------------------------
+TYPE-POOLS:
+  slis. " Grupo de tipos alv
+*-----------------------------------------------------------------------
+* Definição de Tipos
+*-----------------------------------------------------------------------
+TYPES:
+  BEGIN OF ys_dados,
+    bukrs TYPE bsik-bukrs, " Empresa
+    lifnr TYPE bsik-lifnr, " Conta
+    gjahr TYPE bsik-gjahr,
+    belnr TYPE bsik-belnr, " NÚMERO DOCUMENTO DE UM DOCUMENTO CONTÁBIL
+    buzei TYPE bsik-buzei,
+    budat TYPE bsik-budat,
+    bldat TYPE bsik-bldat, " DATA NO DOCUMENTO
+    cpudt TYPE bsik-cpudt,
+    xblnr TYPE bsik-xblnr, " nÚMERO DE DOCUMENTO DE REFERÊNCIA
+    blart TYPE bsik-blart,
+    dmbtr TYPE bsik-dmbtr,
+    zfbdt TYPE bsik-zfbdt, " DATA DE VENCIMENTO
+    zlsch TYPE bsik-zlsch,
+  END OF ys_dados,
+
+  BEGIN OF ys_all,
+    "BUKRS TYPE BSIK-BUKRS, " Empresa
+    lifnr     TYPE bsik-lifnr, " Conta
+    dmbtr     TYPE bsik-dmbtr, " VALOR
+    finan     TYPE bsik-dmbtr, " Valor Financiamento / Empréstimos
+    total     TYPE bsik-dmbtr, " Valor total. Soma de DMBTR + FINAN
+    nomes(70) TYPE c, " Nome do Fornecedor LFA1-NAME1 + LFA1-NAME2
+    belnr     TYPE bsik-belnr, " NÚMERO DOCUMENTO DE UM DOCUMENTO CONTÁBIL
+    xblnr     TYPE bsik-xblnr, " nÚMERO DE DOCUMENTO DE REFERÊNCIA
+    bldat     TYPE bsik-bldat, " DATA NO DOCUMENTO
+    zfbdt     TYPE bsik-zfbdt, " DATA DE VENCIMENTO
+    fdtag     TYPE bseg-fdtag, " DATA DE PLANEJAMENTO
+  END OF ys_all,
+
+  BEGIN OF ys_bseg,
+    bukrs TYPE bseg-bukrs,
+    belnr TYPE bseg-belnr,
+    gjahr TYPE bseg-gjahr,
+    buzei TYPE bseg-buzei,
+    zterm TYPE bseg-zterm,
+    fdtag TYPE bseg-fdtag,
+  END OF ys_bseg,
+
+  BEGIN OF ys_lfa1,
+    lifnr TYPE lfa1-lifnr,
+    name1 TYPE lfa1-name1,
+    name2 TYPE lfa1-name2,
+  END OF ys_lfa1.
+*-----------------------------------------------------------------------
+* Definição de Tabelas Internas
+*-----------------------------------------------------------------------
+DATA:
+  gt_dados      TYPE TABLE OF ys_dados,
+  gt_all        TYPE TABLE OF ys_all,
+  gt_all_header TYPE TABLE OF ys_all,
+  gt_all_empty  TYPE TABLE OF ys_all,
+  gt_bseg       TYPE TABLE OF ys_bseg,
+  gt_lfa1       TYPE TABLE OF ys_lfa1.
+*-----------------------------------------------------------------------
+* Definição de Estruturas
+*-----------------------------------------------------------------------
+DATA:
+  gs_dados      TYPE  ys_dados,
+  gs_all        TYPE  ys_all,
+  gs_all_header TYPE  ys_all,
+  gs_bseg       TYPE  ys_bseg,
+  gs_lfa1       TYPE  ys_lfa1.
+*-----------------------------------------------------------------------
+* Definição de Variáveis
+*-----------------------------------------------------------------------
+DATA: li_index            TYPE i,
+      ok_code             LIKE sy-ucomm,           "OK-Code
+      gd_tree             TYPE REF TO cl_gui_alv_tree,
+      gd_hierarchy_header TYPE treev_hhdr,
+      gc_variant_exit(1),
+      gs_variante         TYPE disvariant,
+*ALV data declarations
+      gt_fieldcat         TYPE lvc_t_fcat,
+      gd_layout           TYPE slis_layout_alv.
+*ALVtree data declarations
+CLASS cl_gui_column_tree DEFINITION LOAD.
+CLASS cl_gui_cfw DEFINITION LOAD.
+*-----------------------------------------------------------------------
+* LOCAL CLASSES
+*-----------------------------------------------------------------------
+CLASS lcl_tree_event_receiver DEFINITION.
+
+  PUBLIC SECTION.
+    METHODS handle_node_double_click
+                  FOR EVENT node_double_click OF cl_gui_alv_tree
+      IMPORTING node_key sender.
+ENDCLASS.                    "lcl_tree_event_receiver DEFINITION
+******************************************************************
+CLASS lcl_tree_event_receiver IMPLEMENTATION.
+
+  METHOD handle_node_double_click.
+    DATA: lt_children TYPE lvc_t_nkey.
+    DATA: li_index TYPE i.
+
+    CALL METHOD sender->get_children
+      EXPORTING
+        i_node_key  = node_key
+      IMPORTING
+        et_children = lt_children.
+
+    IF NOT lt_children IS INITIAL.
+
+      CALL METHOD sender->expand_node
+        EXPORTING
+          i_node_key    = node_key
+          i_level_count = 2.
+    ELSE.
+      CONDENSE node_key.
+      li_index = node_key - 1.
+      READ TABLE gt_all INTO gs_all INDEX li_index.
+
+      IF sy-subrc IS INITIAL.
+        SET PARAMETER ID 'BLN' FIELD gs_all-belnr.
+        CALL TRANSACTION 'FB02' AND SKIP FIRST SCREEN.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.                    "handle_node_double_click
+ENDCLASS.                    "lcl_tree_event_receiver IMPLEMENTATION
+*Create container for alv-tree
+DATA: gd_tree_container_name(30) TYPE c,
+      gd_custom_container        TYPE REF TO cl_gui_custom_container.
+"      l_event_receiver TYPE REF TO lcl_tree_event_receiver.
+*-----------------------------------------------------------------------
+* Includes
+*-----------------------------------------------------------------------
+*INCLUDE zpfir009_alvtreeo01. "Screen PBO Modules
+*INCLUDE zpfir009_alvtreei01. "Screen PAI Modules
+*INCLUDE zpfir009_alvtreef01. "ABAP Subroutines(FORMS)
+**-----------------------------------------------------------------------
+* Definição de Telas de Seleção
+*-----------------------------------------------------------------------
+SELECTION-SCREEN: BEGIN OF BLOCK b01 WITH FRAME TITLE text-001.
+SELECT-OPTIONS: so_bukrs FOR bsik-bukrs OBLIGATORY NO INTERVALS,        " EMPRESA
+                so_lifnr FOR bsik-lifnr,        " FORNECEDOR
+                so_belnr FOR bsik-belnr,                                    " Nº documento de um documento contábil
+                so_blart FOR bsik-blart,        " Tipo de documento
+                so_fdtag FOR bseg-fdtag,
+                so_dtref FOR bseg-fdtag NO INTERVALS.
+
+SELECTION-SCREEN: END OF BLOCK b01.
+SELECTION-SCREEN BEGIN OF BLOCK b02 WITH FRAME TITLE text-012.
+PARAMETERS: pc_vari TYPE disvariant-variant.
+SELECTION-SCREEN END OF BLOCK b02.
+
+*-----------------------------------------------------------------------
+* Evento: inicialização
+*-----------------------------------------------------------------------
+INITIALIZATION.
+  CLEAR gs_variante.
+
+  gs_variante-report = sy-repid.  "Armazena em variável auxiliar
+
+  CALL FUNCTION 'REUSE_ALV_VARIANT_DEFAULT_GET'   "Chama função que armazena a variante default
+    EXPORTING
+      i_save        = 'A'
+    CHANGING
+      cs_variant    = gs_variante
+    EXCEPTIONS
+      wrong_input   = 1
+      not_found     = 2
+      program_error = 3
+      OTHERS        = 4.
+
+  IF sy-subrc IS INITIAL.
+    pc_vari = gs_variante-variant.
+  ENDIF.
+*-----------------------------------------------------------------------
+* Evento At Selection-Screen Output
+*-----------------------------------------------------------------------
+AT SELECTION-SCREEN.
+
+  PERFORM zf_so_dtref_validate.
+
+  PERFORM zf_pc_vari.
+*-----------------------------------------------------------------------
+* Evento At Selection-Screen ON VALUE-REQUEST FOR pc_vari.
+*-----------------------------------------------------------------------
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR pc_vari.
+
+  PERFORM zf_reuse_variant.
+*-----------------------------------------------------------------------
+* Evento Start-Of-Selection
+*-----------------------------------------------------------------------
+START-OF-SELECTION.
+
+  CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+    EXPORTING       "PERCENTAGE = 0
+      text = text-014.
+
+  " Seleção dos dados
+  PERFORM zf_data_selection.
+  " Preenchendo estrutura do relatório sintético
+  PERFORM zf_sintetico_analitico.
+  " ALVtree setup data
+*-----------------------------------------------------------------------
+* Evento End-Of-Selection
+*-----------------------------------------------------------------------
+END-OF-SELECTION.
+  PERFORM zf_fieldcatalog.
+  PERFORM zf_layout.
+  PERFORM zf_hierarchy_header CHANGING gd_hierarchy_header.
+  "PERFORM build_report_title USING gd_report_title gd_logo.
+  PERFORM build_variant.
+  " Display ALVtree report
+  CALL SCREEN 100.
+*&---------------------------------------------------------------------*
+*&      Form  ZF_LAYOUT
+*&---------------------------------------------------------------------*
+*       Build layout for ALV grid report
+*----------------------------------------------------------------------*
+FORM zf_layout.
+
+  gd_layout-expand_all        = 'X'.
+  gd_layout-colwidth_optimize = 'X'.
+  gd_layout-totals_text       = text-011.
+  gd_layout-totals_only       = 'X'.
+  gd_layout-window_titlebar   = text-015.
+  gd_layout-lights_tabname    = 'GT_ALL'.
+  gd_layout-key_hotspot       = 'X'.
+  gd_layout-zebra             = ' '.
+  gd_layout-group_change_edit = 'X'.
+
+ENDFORM.                    " ZF_LAYOUT
+*&---------------------------------------------------------------------*
+*&      Form  BUILD_VARIANT
+*&---------------------------------------------------------------------*
+*       Build variant
+*----------------------------------------------------------------------*
+FORM build_variant.
+* Set repid for storing variants
+  gs_variante-report = sy-repid.
+ENDFORM.                    " BUILD_VARIANT
+
+*&---------------------------------------------------------------------*
+*&      Form  ZF_SO_DTREF_VALIDATE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM zf_so_dtref_validate .
+
+  IF so_dtref IS INITIAL.
+
+    so_dtref = sy-datum.
+
+  ENDIF.
+ENDFORM.                    " ZF_SO_DTREF_VALIDATE
+*&---------------------------------------------------------------------*
+*&      Form  ZF_DATA_SELECTION
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM zf_data_selection .
+
+  " Não foi possivel fazer um INNER JOIN en tre BSIK e BSEG pois A segunda é uma tabela cluster
+  SELECT bukrs lifnr gjahr belnr buzei budat bldat cpudt xblnr blart dmbtr zfbdt zlsch FROM bsik
+    INTO TABLE gt_dados
+    WHERE bukrs IN so_bukrs AND
+          lifnr IN so_lifnr AND
+          belnr IN so_belnr AND
+          blart IN so_blart AND
+          augdt IN so_dtref.
+  " Realizando o filtro da data de vencimento ou planejamento
+  IF sy-subrc IS INITIAL .
+    IF so_fdtag IS NOT INITIAL.
+      SELECT bukrs belnr gjahr buzei zterm fdtag
+        FROM bseg
+        INTO TABLE gt_bseg
+        WHERE fdtag IN so_fdtag.
+
+      IF sy-subrc IS INITIAL.
+        CLEAR li_index.
+        LOOP AT gt_dados INTO gs_dados.
+          li_index = sy-tabix.
+          READ TABLE gt_bseg WITH KEY bukrs = gs_dados-bukrs
+                                      belnr = gs_dados-belnr
+                                      gjahr = gs_dados-gjahr
+                                      buzei = gs_dados-buzei
+                                      TRANSPORTING NO FIELDS.
+          IF sy-subrc IS INITIAL.
+            DELETE gt_dados INDEX li_index.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+    ENDIF.
+
+    SELECT lifnr name1 name2 FROM lfa1
+      INTO TABLE gt_lfa1
+      FOR ALL ENTRIES IN gt_dados
+      WHERE lifnr EQ  gt_dados-lifnr.
+  ENDIF.
+
+ENDFORM.                    " ZF_DATA_SELECTION
+*&---------------------------------------------------------------------*
+*&      Form  ZF_SINTETICO_ANALITICO
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM zf_sintetico_analitico .
+
+
+  LOOP AT gt_dados INTO gs_dados.
+    CLEAR gs_all.
+    gs_all-lifnr = gs_dados-lifnr.
+    gs_all-xblnr = gs_dados-xblnr. " nt fiscal
+    gs_all-bldat = gs_dados-bldat. " data do documento
+
+    " COMPLETANDO COM ZEROS A ESQUERDA
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+      EXPORTING
+        input  = gs_dados-belnr
+      IMPORTING
+        output = gs_all-belnr.
+    READ TABLE gt_bseg INTO gs_bseg WITH KEY bukrs = gs_dados-bukrs
+                                             belnr = gs_dados-belnr
+                                             gjahr = gs_dados-gjahr
+                                             buzei = gs_dados-buzei.
+    IF sy-subrc IS INITIAL.
+      gs_all-fdtag = gs_bseg-fdtag.
+    ENDIF.
+
+    " Data de Vencimento somente para o relatório analítico.
+    CALL FUNCTION 'FKK_RWIN_DUE_DATE_DETERMINE'
+      EXPORTING
+        i_zterm = gs_bseg-zterm
+        i_bldat = gs_dados-bldat
+        i_budat = gs_dados-budat
+        i_cpudt = gs_dados-cpudt
+        i_zfbdt = gs_dados-zfbdt
+      IMPORTING
+        e_zfbdt = gs_all-zfbdt.
+
+    IF gs_dados-zlsch EQ 'L' OR gs_dados-blart EQ 'KF'.
+      gs_all-dmbtr = gs_dados-dmbtr.
+    ELSEIF gs_dados-zlsch NE 'L' OR gs_dados-blart NE 'KF'.
+      gs_all-finan = gs_dados-dmbtr.
+    ENDIF.
+
+    gs_all-total = gs_all-dmbtr + gs_all-finan.
+    APPEND gs_all TO gt_all.
+
+  ENDLOOP.
+
+  SORT gt_all BY lifnr belnr.
+
+  LOOP AT gt_all INTO gs_all.
+    CLEAR gs_all_header.
+
+    gs_all_header-lifnr = gs_all-lifnr.
+    " Nome do fornecedor será mostrado somente no relatório sintético
+    READ TABLE gt_lfa1 INTO gs_lfa1 WITH KEY lifnr = gs_all-lifnr.
+    IF sy-subrc IS INITIAL.
+
+      CONCATENATE gs_lfa1-name1 gs_lfa1-name2 INTO gs_all_header-nomes SEPARATED BY space.
+
+    ENDIF.
+
+    gs_all_header-dmbtr = gs_all-dmbtr.
+    gs_all_header-finan = gs_all-finan.
+    gs_all_header-total = gs_all-total.
+
+    COLLECT gs_all_header INTO gt_all_header.
+
+  ENDLOOP.
+
+ENDFORM.                    " ZF_SINTETICO_ANALITICO
+*&---------------------------------------------------------------------*
+*&      Form  ZF_FIELDCATALOG
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM zf_fieldcatalog .
+
+  DATA gs_fieldcat TYPE lvc_s_fcat.
+
+
+  gs_fieldcat-fieldname   = 'LIFNR'.           "Field name in itab
+  gs_fieldcat-scrtext_m   = text-002.          "'Fornecedor'.
+  gs_fieldcat-col_pos     = 0.                 "Column position
+  gs_fieldcat-outputlen   = 15.                "Column width
+  gs_fieldcat-ref_field   = 'LIFNR'.
+  gs_fieldcat-ref_table   = 'BSIK'.
+  gs_fieldcat-emphasize   = 'C600 '."'X'.               "Emphasize  (X or SPACE)
+  gs_fieldcat-key         = 'X'.               "Key Field? (X or SPACE)
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR  gs_fieldcat.
+
+  gs_fieldcat-fieldname   = 'BELNR'.
+  gs_fieldcat-scrtext_m   = text-005. "'Nº do documento'.
+  gs_fieldcat-outputlen   = 15.
+  gs_fieldcat-col_pos     = 1.
+  gs_fieldcat-ref_field   = 'BELNR'.
+  gs_fieldcat-ref_table   = 'BSIK'.
+  gs_fieldcat-key         = 'X'.               "Key Field? (X or SPACE)
+  gs_fieldcat-hotspot     = 'X'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR  gs_fieldcat.
+
+  gs_fieldcat-fieldname   = 'XBLNR'.
+  gs_fieldcat-scrtext_m   = text-003.             "'Nota Fiscal'.
+  gs_fieldcat-outputlen   = 20.
+  gs_fieldcat-col_pos     = 2.
+  gs_fieldcat-ref_field   = 'XBLNR'.
+  gs_fieldcat-ref_table   = 'BSIK'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR  gs_fieldcat.
+
+  gs_fieldcat-fieldname   = 'NOMES'.
+  gs_fieldcat-scrtext_m   = text-004. "'Nome do Fornecedor'.
+  gs_fieldcat-outputlen   = 50.
+  gs_fieldcat-col_pos     = 3.
+  gs_fieldcat-ref_field   = 'NAME1'.
+  gs_fieldcat-ref_table   = 'LFA1'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR  gs_fieldcat.
+
+  gs_fieldcat-fieldname   = 'BLDAT'.
+  gs_fieldcat-scrtext_m   = text-006. "'Data Documento'.
+  gs_fieldcat-outputlen   = 15.
+  gs_fieldcat-col_pos     = 4.
+  gs_fieldcat-ref_field   = 'BLDAT'.
+  gs_fieldcat-ref_table   = 'BSIK'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR  gs_fieldcat.
+
+  gs_fieldcat-fieldname   = 'ZFBDT'.
+  gs_fieldcat-scrtext_m   = text-007. "'Data de Vencimento'.
+  gs_fieldcat-outputlen   = 15.
+  gs_fieldcat-col_pos     = 5.
+  gs_fieldcat-ref_field   = 'ZFBDT'.
+  gs_fieldcat-ref_table   = 'BSIK'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR  gs_fieldcat.
+
+  gs_fieldcat-fieldname   = 'FDTAG'.
+  gs_fieldcat-scrtext_m   = text-008. "'Data de Planejamento'.
+  gs_fieldcat-outputlen   = 15.
+  gs_fieldcat-col_pos     = 6.
+  gs_fieldcat-ref_field   = 'FDTAG'.
+  gs_fieldcat-ref_table   = 'BSIK'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR  gs_fieldcat.
+
+  gs_fieldcat-fieldname   = 'DMBTR'.
+  gs_fieldcat-scrtext_m   = text-009. "'Valor'.
+  gs_fieldcat-outputlen   = 20.
+  gs_fieldcat-col_pos     = 7.
+  gs_fieldcat-ref_field   = 'DMBTR'.
+  gs_fieldcat-ref_table   = 'BSIK'.
+  gs_fieldcat-datatype    = 'CURR'.
+  gs_fieldcat-do_sum      = 'X'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR  gs_fieldcat.
+
+  gs_fieldcat-fieldname   = 'FINAN'.
+  gs_fieldcat-scrtext_m   = 'Financ' ."text-010. "'Valor Financiamento'.
+  gs_fieldcat-outputlen   = 20.
+  gs_fieldcat-col_pos     = 8.
+  gs_fieldcat-coltext     = text-010. "'Valor de Financiamento'.
+  gs_fieldcat-datatype     = 'CURR'.
+  gs_fieldcat-do_sum      = 'X'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR  gs_fieldcat.
+
+  gs_fieldcat-fieldname   = 'TOTAL'.
+  gs_fieldcat-scrtext_m   = 'Total'. "text-011. "'Valor Total'.
+  gs_fieldcat-outputlen   = 20.
+  gs_fieldcat-col_pos     = 9.
+  gs_fieldcat-coltext     = text-011.  "'Valor Total'.
+  gs_fieldcat-datatype     = 'CURR'.
+  gs_fieldcat-do_sum      = 'X'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR  gs_fieldcat.
+ENDFORM.                    " ZF_FIELDCATALOG
+*&---------------------------------------------------------------------*
+*&      Form  ZF_HIERARCHY_HEADER
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      <--P_GD_HIERARCHY_HEADER  text
+*----------------------------------------------------------------------*
+FORM zf_hierarchy_header  CHANGING p_hierarchy_header TYPE treev_hhdr.
+
+  p_hierarchy_header-heading = text-016.
+  p_hierarchy_header-width = 30.
+  p_hierarchy_header-width_pix = ''.
+
+ENDFORM.                    " ZF_HIERARCHY_HEADER
+*&---------------------------------------------------------------------*
+*&      Form  ZF_PC_VARI
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM zf_pc_vari .
+  IF NOT pc_vari IS INITIAL.
+
+    gs_variante-variant = pc_vari.   "O que foi digitado
+
+    CALL FUNCTION 'REUSE_ALV_VARIANT_EXISTENCE'
+      EXPORTING
+        i_save     = 'A'
+      CHANGING
+        cs_variant = gs_variante.
+
+  ELSE.
+    CLEAR gs_variante.
+    gs_variante-report = sy-repid.
+  ENDIF.
+ENDFORM.                    " ZF_PC_VARI
+*&---------------------------------------------------------------------*
+*&      Form  ZF_REUSE_VARIANT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM zf_reuse_variant .
+
+  CALL FUNCTION 'REUSE_ALV_VARIANT_F4'
+    EXPORTING
+      is_variant         = gs_variante
+      i_tabname_header   = 'GT_ALL_HEADER'
+      i_save             = 'A'    "Variantes salvas
+      i_display_via_grid = 'X'    "Dispara popup em ALV
+    IMPORTING
+      e_exit             = gc_variant_exit    "Se não existir variante
+      es_variant         = gs_variante    "Variante default
+    EXCEPTIONS
+      not_found          = 1
+      program_error      = 2
+      OTHERS             = 3.
+
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+    WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ELSE.
+    IF gc_variant_exit = space.
+      pc_vari = gs_variante-variant.   "Recebe variante escolhida
+    ENDIF.
+  ENDIF.
+ENDFORM.                    " ZF_REUSE_VARIANT
+*&---------------------------------------------------------------------*
+*&  Include           ZPFIR009_ALVTREEF01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&  Include           ZDEMO_ALVTREEF01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_ALVTREE_CONTAINER
+*&---------------------------------------------------------------------*
+*       Create container for alv-tree
+*----------------------------------------------------------------------*
+FORM create_alvtree_container.
+
+  gd_tree_container_name = 'SCREEN_CONTAINER'.
+
+  CREATE OBJECT gd_custom_container
+    EXPORTING
+      container_name              = gd_tree_container_name
+    EXCEPTIONS
+      cntl_error                  = 1
+      cntl_system_error           = 2
+      create_error                = 3
+      lifetime_error              = 4
+      lifetime_dynpro_dynpro_link = 5.
+
+  IF sy-subrc <> 0.
+    MESSAGE x208(00) WITH 'ERROR'.
+  ENDIF.
+ENDFORM.                    "create_alvtree_container
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_OBJECT_IN_CONTAINER
+*&---------------------------------------------------------------------*
+*       Create ALVtree control
+*----------------------------------------------------------------------*
+FORM create_object_in_container.
+
+  CREATE OBJECT gd_tree
+    EXPORTING
+      parent                      = gd_custom_container
+      node_selection_mode         = cl_gui_column_tree=>node_sel_mode_single
+      item_selection              = 'X'
+      no_html_header              = 'X'
+      no_toolbar                  = ''
+    EXCEPTIONS
+      cntl_error                  = 1
+      cntl_system_error           = 2
+      create_error                = 3
+      lifetime_error              = 4
+      illegal_node_selection_mode = 5
+      failed                      = 6
+      illegal_column_name         = 7.
+  IF sy-subrc <> 0.
+    MESSAGE x208(00) WITH 'ERROR'.
+  ENDIF.
+ENDFORM.                    "create_object_in_container
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_EMPTY_ALVTREE_CONTROL
+*&---------------------------------------------------------------------*
+*       Create empty tree control
+*----------------------------------------------------------------------*
+FORM create_empty_alvtree_control.
+
+* Create emty tree-control
+  CLEAR: gt_all_empty.
+  REFRESH: gt_all_empty.
+
+  CALL METHOD gd_tree->set_table_for_first_display
+    EXPORTING
+      is_hierarchy_header = gd_hierarchy_header
+      i_save              = 'A'               " i_callback_user_command = 'ZF_CALL_FB02'
+      is_variant          = gs_variante
+    CHANGING
+      it_outtab           = gt_all_empty
+      it_fieldcatalog     = gt_fieldcat.
+
+ENDFORM.                    " CREATE_EMPTY_ALVTREE_CONTROL
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_ALVTREE_HIERARCHY
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*       Builds ALV tree display, (inserts nodes, subnodes etc)
+*----------------------------------------------------------------------*
+FORM create_alvtree_hierarchy.
+
+  DATA: ld_lifnr_key TYPE lvc_nkey,
+        ld_belnr_key TYPE lvc_nkey.
+
+  LOOP AT gt_all_header INTO gs_all_header.
+    PERFORM add_header_node USING  gs_all_header
+                                     ''
+                            CHANGING ld_lifnr_key.
+
+    LOOP AT gt_all INTO gs_all WHERE lifnr EQ gs_all_header-lifnr.
+      PERFORM add_child_line USING      gs_all
+                                       ld_lifnr_key
+                              CHANGING ld_belnr_key.
+    ENDLOOP.
+  ENDLOOP.
+
+  PERFORM register_events.
+
+* CALCULATE TOTALS
+  CALL METHOD gd_tree->update_calculations.
+
+* THIS METHOD MUST BE CALLED TO SEND THE DATA TO THE FRONTEND
+  CALL METHOD gd_tree->frontend_update.
+
+
+ENDFORM.                    " CREATE_ALVTREE_HIERARCHY
+
+*&---------------------------------------------------------------------*
+*&      Form  ADD_header_NODE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_WA_EKPO  text
+*      -->P_0553   text
+*      <--P_EBELN_KEY  text
+*----------------------------------------------------------------------*
+FORM add_header_node USING    ps_header LIKE gs_all_header
+                          VALUE(p_relate_key)
+                   CHANGING p_node_key.
+
+
+  DATA: ld_node_text TYPE lvc_value.
+
+* Set item-layout
+  DATA: lt_item_layout TYPE lvc_t_layi,
+        ls_item_layout TYPE lvc_s_layi.
+
+  ls_item_layout-t_image   = '@3P@'.
+  ls_item_layout-fieldname = gd_tree->c_hierarchy_column_name.
+  ls_item_layout-style     = cl_gui_column_tree=>style_default.
+
+  ld_node_text             = ps_header-lifnr.
+
+  APPEND ls_item_layout TO lt_item_layout.
+
+* Add node
+  CALL METHOD gd_tree->add_node
+    EXPORTING
+      i_relat_node_key = p_relate_key
+      i_relationship   = cl_gui_column_tree=>relat_last_child
+      i_node_text      = ld_node_text
+      is_outtab_line   = ps_header
+      it_item_layout   = lt_item_layout
+    IMPORTING
+      e_new_node_key   = p_node_key.
+
+
+
+ENDFORM.                    " ADD_HEADER_NODE
+*&---------------------------------------------------------------------*
+*&      Form  ADD_child_LINE
+*&---------------------------------------------------------------------*
+*       TEXT
+*----------------------------------------------------------------------*
+*      -->P_WA_EKPO  text
+*      -->P_LD_EBELN_KEY  text
+*      <--P_LD_EBELP_KEY  text
+*----------------------------------------------------------------------*
+FORM add_child_line USING    ps_child LIKE gs_all
+                            VALUE(p_relate_key)
+                   CHANGING p_node_key.
+
+
+  DATA: ld_node_text TYPE lvc_value.
+
+* Set item-layout
+  DATA: lt_item_layout TYPE lvc_t_layi,
+        ls_item_layout TYPE lvc_s_layi.
+
+
+  ls_item_layout-t_image   = '@3P@'.
+  ls_item_layout-fieldname = gd_tree->c_hierarchy_column_name.
+  ls_item_layout-style     = cl_gui_column_tree=>style_default.
+  ld_node_text             = gs_all-belnr.
+  APPEND ls_item_layout TO lt_item_layout.
+
+* Add node
+  CALL METHOD gd_tree->add_node
+    EXPORTING
+      i_relat_node_key = p_relate_key
+      i_relationship   = cl_gui_column_tree=>relat_last_child
+      i_node_text      = ld_node_text
+      is_outtab_line   = ps_child
+      it_item_layout   = lt_item_layout
+    IMPORTING
+      e_new_node_key   = p_node_key.
+
+ENDFORM.                    " ADD_CHILD_LINE
+*&---------------------------------------------------------------------*
+*&      Form  Register_events
+*&---------------------------------------------------------------------*
+FORM register_events .
+
+  DATA: lt_events        TYPE cntl_simple_events,
+        l_event          TYPE cntl_simple_event,
+        l_event_receiver TYPE REF TO lcl_tree_event_receiver.
+
+
+  CALL METHOD gd_tree->get_registered_events
+    IMPORTING
+      events = lt_events.
+
+  l_event-eventid = cl_gui_column_tree=>eventid_node_double_click.
+  APPEND l_event TO lt_events.
+
+  CALL METHOD gd_tree->set_registered_events
+    EXPORTING
+      events                    = lt_events
+    EXCEPTIONS
+      cntl_error                = 1
+      cntl_system_error         = 2
+      illegal_event_combination = 3.
+  IF sy-subrc <> 0.
+    MESSAGE x208(00) WITH 'ERROR'.                          "#EC NOTEXT
+  ENDIF.
+
+  CREATE OBJECT l_event_receiver.
+  SET HANDLER l_event_receiver->handle_node_double_click FOR gd_tree.
+ENDFORM.                    " REGISTER_EVENTS
+*&---------------------------------------------------------------------*
+*&  Include           ZPFIR009_ALVTREEI01
+*&---------------------------------------------------------------------*
+*&------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&------------------------------------------------------------------*
+*       PAI Module
+*-------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+
+  DATA return TYPE REF TO cl_gui_event.
+
+  CASE ok_code.
+    WHEN 'BACK' OR 'LEAVE' OR 'EXIT'.
+*     Exit program
+      CALL METHOD gd_tree->free.
+      LEAVE PROGRAM.
+
+*   Process ALVtree user actions
+    WHEN OTHERS.
+      CALL METHOD cl_gui_cfw=>get_current_event_object
+        RECEIVING
+          event_object = return.
+      CALL METHOD cl_gui_cfw=>dispatch.
+  ENDCASE.
+ENDMODULE.                 " USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*&  Include           ZPFIR009_ALVTREEO01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0100 OUTPUT.
+
+  SET PF-STATUS 'ZSTATUS'.
+  SET TITLEBAR 'T100'.
+
+  IF gd_tree IS INITIAL.
+*   Create container for alv-tree
+    PERFORM create_alvtree_container.
+* Create tree control
+    PERFORM create_object_in_container.
+* Create empty ALVtree control ready for first display
+    PERFORM create_empty_alvtree_control.
+* Create ALVtree Hierarchy
+    PERFORM create_alvtree_hierarchy.
+  ENDIF.
+
+ENDMODULE.

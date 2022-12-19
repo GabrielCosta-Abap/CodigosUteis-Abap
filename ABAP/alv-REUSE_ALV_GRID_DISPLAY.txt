@@ -1,0 +1,71 @@
+DATA gt_fieldcat TYPE slis_t_fieldcat_alv.
+DATA gs_fieldcat LIKE LINE OF gt_fieldcat.
+DATA gs_layout  TYPE slis_layout_alv.
+
+PERFORM display_alv_grid.
+
+
+
+FORM display_alv_grid.
+
+  gs_fieldcat-col_pos       = 1.
+  gs_fieldcat-fieldname     = 'MTART'.
+  gs_fieldcat-DO_SUM        = 'X'.
+
+  gs_fieldcat-tabname       = 'ZSTINCDADOS'.
+  gs_fieldcat-reptext_ddic  = 'Tipo de Material'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR gs_fieldcat.
+
+  gs_fieldcat-col_pos       = 2.
+  gs_fieldcat-fieldname     = 'MATNR'.
+  gs_fieldcat-do_sum        = 'X'.
+  gs_fieldcat-tabname       = 'ZSTINCDADOS'.
+  gs_fieldcat-reptext_ddic  = 'Material'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR gs_fieldcat.
+
+  gs_fieldcat-col_pos       = 3.
+  gs_fieldcat-fieldname     = 'WERKS'.
+  gs_fieldcat-tabname       = 'ZSTINCDADOS'.
+  gs_fieldcat-reptext_ddic  = 'Centro'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR gs_fieldcat.
+
+  gs_fieldcat-col_pos       = 4.
+  gs_fieldcat-fieldname     = 'CHARG'.
+  gs_fieldcat-tabname       = 'ZSTINCDADOS'.
+  gs_fieldcat-reptext_ddic  = 'Lote'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR gs_fieldcat.
+
+  gs_fieldcat-col_pos       = 5.
+  gs_fieldcat-fieldname     = 'HSDAT'.
+  gs_fieldcat-tabname       = 'ZSTINCDADOS'.
+  gs_fieldcat-reptext_ddic  = 'Data de produção'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR gs_fieldcat.
+
+  gs_fieldcat-col_pos       = 6.
+  gs_fieldcat-fieldname     = 'VFDAT'.
+  gs_fieldcat-tabname       = 'ZSTINCDADOS'.
+  gs_fieldcat-reptext_ddic  = 'Data de vencimento'.
+  APPEND gs_fieldcat TO gt_fieldcat.
+  CLEAR gs_fieldcat.
+
+*--------------------------------------------------------------------*
+  gs_layout-zebra = 'X'.
+  gs_layout-colwidth_optimize = 'X'.
+*--------------------------------------------------------------------*
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      is_layout        = gs_layout
+      i_structure_name = 'IT_JOIN'
+      it_fieldcat      = gt_fieldcat
+    TABLES
+      t_outtab         = it_join
+    EXCEPTIONS
+      program_error    = 1
+      OTHERS           = 2.
+ENDFORM.

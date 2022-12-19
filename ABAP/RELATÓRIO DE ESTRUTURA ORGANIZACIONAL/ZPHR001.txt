@@ -1,0 +1,17 @@
+REPORT zphr001.
+
+INCLUDE zphr001_scr.
+INCLUDE zphr001_cls.
+
+START-OF-SELECTION.
+
+  DATA(lr_relat) = NEW lcl_relatorio( ).
+
+  lr_relat->seleciona_dados( ).
+  IF lr_relat->lt_struc IS INITIAL.
+    MESSAGE i398(00) WITH text-002.
+    STOP.
+  ENDIF.
+
+  lr_relat->prepara_dados( ).
+  lr_relat->exibe_dados( ).

@@ -1,0 +1,16 @@
+report z123456.
+
+
+data: gr_table     type ref to cl_salv_table.
+data: gr_functions type ref to cl_salv_functions.
+data: gr_display   type ref to cl_salv_display_settings.
+
+
+  gr_functions = gr_table->get_functions( ).
+  gr_functions->set_all( abap_true ).
+
+  gr_display = gr_table->get_display_settings( ).
+  gr_display->set_list_header( 'This is our custom heading' ).
+  gr_display->set_striped_pattern( abap_true ).
+
+  gr_table->display( ).

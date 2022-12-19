@@ -1,0 +1,105 @@
+*&---------------------------------------------------------------------*
+*& Report ZGABRIEL2
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zgabriel2.
+
+" Tabelas transparentes ...
+TABLES :
+  ekko,
+  ekpo
+  .
+
+" Constantes ...
+CONSTANTS :
+  c_r1(02)     TYPE c VALUE 'R1',           "Grupo campo tela seleção
+  c_r2(02)     TYPE c VALUE 'R2'            "Grupo campo tela seleção
+.
+
+" Tela de seleção ...
+
+*text-p03 = Opções de Processamento
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-p03.
+PARAMETERS:
+"  Olhem esse negocio de 'user command' é isso que informa que deve realizar
+" alguma coisa antes de continuar,
+  p_blc1    RADIOBUTTON GROUP gp01 DEFAULT 'X'
+                             USER-COMMAND radio,
+  p_blc2    RADIOBUTTON GROUP gp01
+  .
+SELECTION-SCREEN END OF BLOCK b1.
+
+
+SELECTION-SCREEN BEGIN OF BLOCK b2.
+PARAMETERS:
+"  Aqui eu criei um parameters normal mas eu criei um ID para ele,
+" informando que o campo 'group1' deste parameters recebe o valor 'r2'
+" separando-o dos outros objetos da tela de seleção.
+  p_bloc1  TYPE file_table-filename DEFAULT 'Bloco 1'
+    MODIF ID r2
+  .
+SELECTION-SCREEN END   OF BLOCK b2.
+
+SELECTION-SCREEN BEGIN OF BLOCK b3.
+PARAMETERS:
+"  Fiz igualzinho ao de cima mas agora o valor e diferente, tendo o 'r1'
+" para o campo 'group1' de cada parameters abaixo.
+  P_bloc21  TYPE file_table-filename DEFAULT 'Bloco 21'
+      MODIF ID r1,
+  P_bloc22  TYPE file_table-filename DEFAULT 'Bloco 22'
+      MODIF ID r1,
+  P_bloc23  TYPE file_table-filename DEFAULT 'Bloco 23'
+      MODIF ID r1
+  .
+SELECTION-SCREEN END   OF BLOCK b3.
+
+
+*----------------------------------------------------------------------*
+* At Selection-Screen                                                  *
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN OUTPUT.
+
+* Conforme opção de processamento, desabilita campos da tela.
+
+  IF NOT p_blc1 IS INITIAL.
+   " PERFORM f_controla_tela USING c_r2.
+  LOOP AT SCREEN.
+
+" Condicão para ativar ou desativar, Mostra ou não mostra na tela .
+    IF screen-group1 NE c_r2 AND
+     NOT screen-group1 IS INITIAL.
+      screen-active = 0.
+    ELSE.
+      screen-active = 1.
+    ENDIF.
+    MODIFY SCREEN.
+  ENDLOOP.
+  ELSE.
+    PERFORM f_controla_tela USING c_r1.
+  ENDIF.
+
+*&---------------------------------------------------------------------*
+*&      Form  f_controla_tela
+*&---------------------------------------------------------------------*
+*       Mostra e oculta os campos  da tela de seleção conforme opção
+* de processamento escolhido
+*----------------------------------------------------------------------*
+*      -->p_campo    Campo que deve se habilitado
+*----------------------------------------------------------------------*
+FORM f_controla_tela USING p_campo TYPE c.
+
+" Dá o loop em cada objeto da tela.
+  LOOP AT SCREEN.
+
+" Condicão para ativar ou desativar, Mostra ou não mostra na tela .
+    IF screen-group1 NE p_campo AND
+     NOT screen-group1 IS INITIAL.
+      screen-active = 0.
+    ELSE.
+      screen-active = 1.
+    ENDIF.
+    MODIFY SCREEN.
+  ENDLOOP.
+
+ENDFORM.                    " f_controla_tela

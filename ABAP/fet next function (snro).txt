@@ -1,0 +1,34 @@
+FORM zf_log_number_get CHANGING ch_lognum TYPE ztm0006-lognum.
+
+  CONSTANTS: c_log_nr_range   TYPE inri-nrrangenr VALUE '01',
+             c_log_obj_number TYPE inri-object    VALUE 'ZTMMONLOG'.
+
+  CLEAR ch_lognum.
+
+  CALL FUNCTION 'NUMBER_GET_NEXT'
+    EXPORTING
+      nr_range_nr             = c_log_nr_range
+      object                  = c_log_obj_number
+    IMPORTING
+      number                  = ch_lognum
+    EXCEPTIONS
+      interval_not_found      = 1
+      number_range_not_intern = 2
+      object_not_found        = 3
+      quantity_is_0           = 4
+      quantity_is_not_1       = 5
+      interval_overflow       = 6
+      buffer_overflow         = 7
+      OTHERS                  = 8.
+  IF sy-subrc <> 0.
+    " Erro no intervalo de numeração do log do monitor (ZTMMONLOG).
+    MESSAGE e072.
+  ELSE.
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+      EXPORTING
+        input  = ch_lognum
+      IMPORTING
+        output = ch_lognum.
+  ENDIF.
+
+ENDFORM.                    " ZF_LOG_NUMBER_GET

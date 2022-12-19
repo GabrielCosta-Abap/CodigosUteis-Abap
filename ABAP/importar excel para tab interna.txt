@@ -1,0 +1,6 @@
+
+" Método para importar CSV ou XLS
+cl_gui_frontend_services=>file_open_dialog
+
+Metodo para converter para tabela interna
+'TEXT_CONVERT_XLS_TO_SAP'

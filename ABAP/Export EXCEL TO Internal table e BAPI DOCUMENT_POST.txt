@@ -1,0 +1,352 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZPFIR011_CLS
+*&---------------------------------------------------------------------*t
+CLASS lcl_file DEFINITION.
+  PUBLIC SECTION.
+    TYPES:
+      BEGIN OF ty_file,
+        datafatura    TYPE c LENGTH 8,
+        fornecedor    TYPE c LENGTH 10,
+        texto	        TYPE c LENGTH 50,
+        valor	        TYPE c LENGTH 20,
+        atribuicao    TYPE c LENGTH 15,
+        centrocusto	  TYPE c LENGTH 10,
+        contacontabil	TYPE c LENGTH 10,
+        ordem         TYPE c LENGTH 20,
+      END OF ty_file,
+
+      BEGIN OF ty_zterm,
+        lifnr TYPE lfb1-lifnr,
+        zterm TYPE lfb1-zterm,
+      END OF ty_zterm.
+
+    TYPES ty_ztermtab TYPE TABLE OF ty_zterm.
+
+    DATA: gt_file      TYPE TABLE OF ty_file, "alsmex_tabline,
+          gt_conv_file TYPE TABLE OF ztbfi058,
+          gt_return    TYPE TABLE OF bapiret2. "ty_conv_file.
+
+    METHODS convert_file.
+    METHODS monta_tab_principal.
+    METHODS execute.
+
+    METHODS call_bapi
+      CHANGING is_conv_file TYPE ztbfi058..
+
+  PRIVATE SECTION.
+    DATA: ls_file      TYPE ty_file,
+          ls_conv_file TYPE ztbfi058. "ty_conv_file.
+
+    DATA: ls_documentheader TYPE bapiache09,
+          lt_accountpayable TYPE TABLE OF bapiacap09,
+          ls_accountpayable TYPE  bapiacap09,
+          lt_accountgl      TYPE TABLE OF bapiacgl09,
+          ls_accountgl      TYPE  bapiacgl09,
+          lt_currencyamount TYPE TABLE OF bapiaccr09,
+          ls_currencyamount TYPE  bapiaccr09.
+
+    METHODS monta_documentheader
+      IMPORTING is_conv_file TYPE ztbfi058."ty_conv_file.
+
+    METHODS monta_accountpayable
+      IMPORTING is_conv_file TYPE ztbfi058."ty_conv_file.
+
+    METHODS monta_accountgl
+      IMPORTING is_conv_file TYPE ztbfi058. "ty_conv_file..
+
+    METHODS monta_currencyamount
+      IMPORTING is_conv_file TYPE ztbfi058. "
+
+    METHODS limpa_tabelas.
+
+ENDCLASS.
+
+CLASS lcl_file IMPLEMENTATION.
+
+  METHOD convert_file.
+    DATA lv_filename TYPE rlgrap-filename.
+    lv_filename = p_zfile.
+
+    DATA lt_intern TYPE TABLE OF alsmex_tabline.
+    "Função para converter os dados do excel em internal table
+    CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE'
+      EXPORTING
+        filename                = lv_filename
+        i_begin_col             = 1
+        i_begin_row             = 1
+        i_end_col               = 8
+        i_end_row               = 9999
+      TABLES
+        intern                  = lt_intern
+      EXCEPTIONS
+        inconsistent_parameters = 1
+        upload_ole              = 2
+        OTHERS                  = 3.
+
+    " Como os dados vêm em formato "LINHA, COLUNA, VALOR", 
+    " esta parte monta os dados na mesma estrutura do Excel para melhor usuabilidade.
+    DATA lv_linha_ant TYPE sy-tabix.
+
+    LOOP AT lt_intern INTO DATA(ls_aux).
+
+      IF lv_linha_ant <> ls_aux-row AND lv_linha_ant <> 0.
+        APPEND ls_file TO gt_file.
+      ENDIF.
+
+      lv_linha_ant = ls_aux-row.
+
+      IF ls_aux-col = 1.
+        ls_file-datafatura      = ls_aux-value.
+      ENDIF.
+      IF ls_aux-col = 2.
+        ls_file-fornecedor      = ls_aux-value.
+      ENDIF.
+      IF ls_aux-col = 3.
+        ls_file-texto           = ls_aux-value.
+      ENDIF.
+      IF ls_aux-col = 4.
+        ls_file-valor           = ls_aux-value.
+      ENDIF.
+      IF ls_aux-col = 5.
+        ls_file-atribuicao      = ls_aux-value.
+      ENDIF.
+      IF ls_aux-col = 6.
+        ls_file-centrocusto     = ls_aux-value.
+      ENDIF.
+      IF ls_aux-col = 7.
+        ls_file-contacontabil   = ls_aux-value.
+      ENDIF.
+      IF ls_aux-col = 8.
+        ls_file-ordem           = ls_aux-value.
+      ENDIF.
+
+    ENDLOOP.
+
+    APPEND ls_file TO gt_file.
+    DELETE gt_file INDEX 1.
+
+  ENDMETHOD.
+
+  METHOD monta_tab_principal.
+    DATA lt_zterm TYPE ty_ztermtab.
+
+    REPLACE ALL OCCURRENCES OF ',' IN TABLE gt_file WITH '.'.
+
+    LOOP AT gt_file INTO DATA(ls_file_aux).
+
+      ls_conv_file-bukrs = p_bukrs.
+      ls_conv_file-budat = ls_file_aux-datafatura.
+      ls_conv_file-bldat = ls_file_aux-datafatura.
+      ls_conv_file-lifnr = |{ ls_file_aux-fornecedor  ALPHA = IN }|.
+      ls_conv_file-sgtxt = ls_file_aux-texto.
+      ls_conv_file-cpudt = sy-datum.
+      ls_conv_file-uzeit = sy-uzeit.
+      ls_conv_file-usnam = sy-uname.
+      ls_conv_file-blart = p_blart.
+      "ls_conv_file-zterm = 'preenchido abaixo à partir da tab lfb1'
+      ls_conv_file-zlsch = p_zlsch.
+      ls_conv_file-hbkid = p_hbkid.
+      ls_conv_file-wrbtr = ls_file_aux-valor.
+      ls_conv_file-waers = p_waers.
+      ls_conv_file-zuonr = ls_file_aux-atribuicao.
+      ls_conv_file-kostl = |{ ls_file_aux-centrocusto ALPHA = IN }|.
+      ls_conv_file-hkont = |{ ls_file_aux-contacontabil ALPHA = IN }|.
+      ls_conv_file-aufnr = ls_file_aux-ordem.
+      APPEND ls_conv_file TO gt_conv_file.
+    ENDLOOP.
+
+    IF gt_conv_file IS NOT INITIAL.
+      SELECT lifnr
+             zterm
+        FROM lfb1
+        INTO TABLE lt_zterm
+        FOR ALL ENTRIES IN gt_conv_file
+          WHERE lifnr = gt_conv_file-lifnr.
+
+      SELECT *
+        FROM ztbfi058
+        INTO TABLE @DATA(lt_058)
+        FOR ALL ENTRIES IN @gt_conv_file
+        WHERE bukrs = @gt_conv_file-bukrs
+          AND budat = @gt_conv_file-budat
+          AND bldat = @gt_conv_file-bldat
+          AND lifnr = @gt_conv_file-lifnr.
+
+    ENDIF.
+
+    LOOP AT gt_conv_file ASSIGNING FIELD-SYMBOL(<ls_conv_file>).
+      DATA(lv_tabix) = sy-tabix.
+
+      READ TABLE lt_058 INTO DATA(ls_058) WITH KEY bukrs = <ls_conv_file>-bukrs
+                                                   budat = <ls_conv_file>-budat
+                                                   bldat = <ls_conv_file>-bldat
+                                                   lifnr = <ls_conv_file>-lifnr.
+      IF sy-subrc = 0.
+        DELETE gt_conv_file INDEX lv_tabix.
+        CONTINUE.
+      ENDIF.
+
+      READ TABLE lt_zterm INTO DATA(ls_zterm) WITH KEY lifnr = <ls_conv_file>-lifnr.
+      CHECK sy-subrc = 0.
+      <ls_conv_file>-zterm = ls_zterm-zterm.
+    ENDLOOP.
+
+    IF gt_conv_file IS NOT INITIAL.
+      INSERT ztbfi058 FROM TABLE lt_058.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD execute.
+
+    DATA: lv_budat TYPE ztbfi058-budat,
+          lv_sgtxt TYPE ztbfi058-sgtxt.
+
+    LOOP AT gt_conv_file INTO ls_conv_file.
+      IF lv_budat <> ls_conv_file-budat
+        OR lv_sgtxt <> ls_conv_file-sgtxt.
+        me->monta_accountpayable( ls_conv_file ).
+        me->monta_documentheader( ls_conv_file ).
+        me->call_bapi( CHANGING is_conv_file = ls_conv_file ).
+        me->limpa_tabelas( ).
+
+      ENDIF.
+
+      lv_budat = ls_conv_file-budat.
+      lv_sgtxt = ls_conv_file-sgtxt.
+
+      me->monta_accountgl( ls_conv_file ).
+      me->monta_currencyamount( ls_conv_file ).
+    ENDLOOP.
+
+    "Executa últimas linhas do arquivo.
+    me->monta_accountpayable( ls_conv_file ).
+    me->monta_documentheader( ls_conv_file ).
+    me->call_bapi( CHANGING is_conv_file = ls_conv_file ).
+    me->limpa_tabelas( ).
+
+    COMMIT WORK AND WAIT.
+    MESSAGE i398(00) WITH text-003.
+  ENDMETHOD.
+
+  METHOD monta_documentheader.
+
+    ls_documentheader-username     = sy-uname.
+    ls_documentheader-comp_code	   = is_conv_file-bukrs.
+    ls_documentheader-doc_date     = |{ is_conv_file-bldat+4(4) }{ is_conv_file-bldat+2(2) }{ is_conv_file-bldat(2) }|.
+    ls_documentheader-pstng_date   = ls_documentheader-doc_date.
+    ls_documentheader-fisc_year	   = is_conv_file-budat+4(4).
+    ls_documentheader-fis_period   = is_conv_file-budat+2(2).
+    ls_documentheader-doc_type     = is_conv_file-blart.
+    ls_documentheader-ref_doc_no   = |{ is_conv_file-bldat+2(2) }/{ is_conv_file-bldat+4(4) }|.
+
+  ENDMETHOD.
+
+  METHOD monta_accountpayable.
+    ls_accountpayable-itemno_acc = 1.
+
+    ls_accountpayable-vendor_no  = |{ is_conv_file-lifnr ALPHA = IN }|.
+    ls_accountpayable-pmnttrms   = is_conv_file-zterm.
+    ls_accountpayable-comp_code  = is_conv_file-bukrs.
+    ls_accountpayable-pymt_meth  = is_conv_file-zlsch.
+    ls_accountpayable-bank_id    = is_conv_file-hbkid.
+    ls_accountpayable-bline_date = |{ is_conv_file-bldat+4(4) }{ is_conv_file-bldat+2(2) }{ is_conv_file-bldat(2) }|.
+    ls_accountpayable-item_text  = is_conv_file-sgtxt.
+    APPEND ls_accountpayable TO lt_accountpayable.
+  ENDMETHOD.
+
+  METHOD monta_accountgl.
+
+    IF ls_accountgl-itemno_acc IS INITIAL.
+      ls_accountgl-itemno_acc = 1.
+    ENDIF.
+
+    ADD 1 TO ls_accountgl-itemno_acc.
+    ls_accountgl-gl_account   =    |{ is_conv_file-hkont ALPHA = IN }|.
+    ls_accountgl-comp_code    =    is_conv_file-bukrs .
+    ls_accountgl-costcenter   =    |{ is_conv_file-kostl ALPHA = IN }|.
+    ls_accountgl-alloc_nmbr   =    is_conv_file-zuonr .
+    ls_accountgl-orderid      =    is_conv_file-aufnr .
+    ls_accountgl-item_text    =    is_conv_file-sgtxt .
+    APPEND ls_accountgl TO lt_accountgl.
+
+  ENDMETHOD.
+
+  METHOD monta_currencyamount.
+
+    IF lt_currencyamount IS INITIAL.
+      APPEND INITIAL LINE TO lt_currencyamount.
+      ls_currencyamount-itemno_acc = 1.
+    ENDIF.
+    "A primeira linha será sempre o somatório.
+    READ TABLE lt_currencyamount ASSIGNING FIELD-SYMBOL(<fs_aux>) INDEX 1.
+    <fs_aux>-itemno_acc = 1.
+    <fs_aux>-currency   = is_conv_file-waers.
+    ADD is_conv_file-wrbtr TO <fs_aux>-amt_doccur.
+
+    "Depois haverá uma linha para cada valor.
+    ADD 1 TO ls_currencyamount-itemno_acc.
+    ls_currencyamount-currency   = is_conv_file-waers.
+    ls_currencyamount-amt_doccur = is_conv_file-wrbtr.
+    APPEND ls_currencyamount TO lt_currencyamount.
+
+  ENDMETHOD.
+
+  METHOD call_bapi.
+    DATA lv_second.
+
+    IF ls_documentheader IS NOT INITIAL
+      AND ( lt_accountgl IS NOT INITIAL
+      AND   lt_accountpayable IS NOT INITIAL ).
+
+      "O somatório(primeira linha) deve ser negativo.
+      IF lt_currencyamount IS NOT INITIAL.
+        READ TABLE lt_currencyamount ASSIGNING FIELD-SYMBOL(<ls_aux>) INDEX 1.
+        <ls_aux>-amt_doccur = <ls_aux>-amt_doccur * -1.
+      ENDIF.
+
+      "Execução da bapi
+      CALL FUNCTION 'BAPI_ACC_DOCUMENT_POST'
+        EXPORTING
+          documentheader = ls_documentheader
+        TABLES
+          accountgl      = lt_accountgl
+          accountpayable = lt_accountpayable
+          currencyamount = lt_currencyamount
+          return         = gt_return.
+
+      READ TABLE gt_return INTO DATA(ls_return) WITH KEY type = 'E'.
+      IF sy-subrc <> 0.
+        READ TABLE gt_return INTO ls_return WITH KEY type = 'S'.
+        is_conv_file-zstat = 'S'.
+        is_conv_file-znrdoc = |{ ls_return-message+25(18) }|.
+        is_conv_file-zlog01 = 'Documento contabilizado com sucesso'.
+      ELSE.
+
+        CLEAR lv_second.
+        LOOP AT gt_return INTO ls_return WHERE type = 'E'.
+          IF lv_second = 'X'.
+            EXIT.
+          ENDIF.
+          lv_second = 'X'.
+        ENDLOOP.
+
+        is_conv_file-zstat = 'E'.
+        is_conv_file-zlog01 = ls_return-message.
+
+      ENDIF.
+
+      MODIFY ztbfi058 FROM is_conv_file.
+
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD limpa_tabelas.
+    FREE: ls_documentheader,
+          lt_accountgl,
+          lt_accountpayable,
+          lt_currencyamount,
+          gt_return.
+  ENDMETHOD.
+
+ENDCLASS.

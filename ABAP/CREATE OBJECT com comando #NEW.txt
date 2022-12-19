@@ -1,0 +1,2 @@
+    data: gv_event_receiver type ref to lcl_event_receiver.
+    gv_event_receiver = new #( ).

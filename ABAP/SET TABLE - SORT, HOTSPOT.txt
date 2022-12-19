@@ -1,0 +1,312 @@
+*&---------------------------------------------------------------------*
+*& Report  ZPACADR03_7
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+report zpacadr03_7.
+
+tables: ekko, ekpo.
+
+types:
+  begin of ty_tipos,
+
+    ebeln type ekko-ebeln,
+    bedat type ekko-bedat,
+    lifnr type ekko-lifnr,
+    ebelp type ekpo-ebelp,
+    matnr type ekpo-matnr,
+    menge type bstmg,
+    netpr type ekpo-netpr,
+    loekz type ekpo-loekz,
+
+  end of ty_tipos.
+
+data: gt_outtab type table of ty_tipos,
+      gs_outtab like line of gt_outtab.
+
+data: gt_sort type lvc_t_sort,
+      gs_sort type lvc_s_sort.
+
+data go_container  type ref to cl_gui_container.
+
+data go_alv type ref to cl_gui_alv_grid.
+
+class lcl_event_handler definition .
+
+  public section .
+    methods:
+*    --To add new functional buttons to the ALV toolbar
+      handle_toolbar for event toolbar of cl_gui_alv_grid
+        importing e_object e_interactive,
+
+      handle_user_command for event user_command of cl_gui_alv_grid
+        importing e_ucomm,
+
+      handle_hotspot_click for event hotspot_click of cl_gui_alv_grid
+        importing e_row_id e_column_id es_row_no.
+
+endclass.                    "lcl_event_handler DEFINITION
+
+selection-screen begin of block b1 with frame title text-001.
+select-options so_ebeln for ekko-ebeln.
+select-options so_lifnr for ekko-lifnr.
+select-options so_matnr for ekpo-matnr.
+selection-screen end of block b1.
+
+start-of-selection.
+
+  call screen 100.
+
+end-of-selection.
+
+form select_data.
+
+  select a~ebeln
+         a~bedat
+         a~lifnr
+         b~ebelp
+         b~matnr
+         b~menge
+         b~netpr
+         b~loekz
+    from ekko as a
+    inner join ekpo as b on ( a~ebeln = b~ebeln )
+    into corresponding fields of table gt_outtab
+    where a~ebeln in so_ebeln.
+
+endform.
+
+form display_alv.
+
+  data(ls_fcat) = value lvc_s_fcat( fieldname = 'EBELN'
+                                    hotspot   = 'X'
+                                    ref_table = 'EKKO'
+                                    col_pos   = 1 ).
+
+  data lt_fcat type lvc_t_fcat.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'BEDAT'.
+  ls_fcat-ref_table = 'EKKO'.
+  ls_fcat-ref_field = 'BEDAT'.
+  ls_fcat-col_pos = 2.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'LIFNR'.
+  ls_fcat-ref_table = 'EKKO'.
+  ls_fcat-ref_field = 'LIFNR'.
+  ls_fcat-seltext = 'oi'.
+  ls_fcat-col_pos = 3.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'EBELP'.
+  ls_fcat-ref_table = 'EKPO'.
+  ls_fcat-ref_field = 'EBELP'.
+  ls_fcat-col_pos = 4.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'MATNR'.
+  ls_fcat-ref_table = 'EKPO'.
+  ls_fcat-ref_field = 'MATNR'.
+  ls_fcat-col_pos = 5.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'MENGE'.
+  ls_fcat-ref_table = 'EKPO'.
+  ls_fcat-ref_field = 'MENGE'.
+  ls_fcat-col_pos = 6.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'NETPR'.
+  ls_fcat-ref_table = 'EKPO'.
+  ls_fcat-ref_field = 'NETPR'.
+  ls_fcat-col_pos = 7.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'LOEKZ'.
+  ls_fcat-ref_table = 'EKPO'.
+  ls_fcat-ref_field = 'LOEKZ'.
+  ls_fcat-outputlen = 20.
+  ls_fcat-col_pos = 8.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+
+  data: gi_spos type i value 0.
+
+  " Ordenações
+  clear gs_sort.
+  add 1 to gi_spos.
+  gs_sort-spos = gi_spos.
+  gs_sort-fieldname = 'EBELN'.
+  gs_sort-up = 'X' .
+  append gs_sort to gt_sort .
+
+*  clear gs_sort.
+*  add 1 to gi_spos.
+*  gs_sort-spos = gi_spos.
+*  gs_sort-fieldname = 'BEDAT'.
+*  gs_sort-up = 'X' .
+*  append gs_sort to gt_sort .
+*
+*  clear gs_sort.
+*  add 1 to gi_spos.
+*  gs_sort-spos = gi_spos.
+*  gs_sort-fieldname = 'LIFNR'.
+*  gs_sort-up = 'X' .
+*  append gs_sort to gt_sort .
+
+
+  data(ls_layo) = value lvc_s_layo( "cwidth_opt = 'A'
+                                    zebra      = abap_true
+                                    sel_mode   = 'A' ).
+
+  data: ls_variant type disvariant.
+
+  ls_variant-report = sy-repid.
+
+  if go_alv is initial.
+
+    go_alv = new #( i_parent = go_container ).
+
+    go_alv->set_table_for_first_display(
+
+      exporting
+*        i_structure_name              = 'ZSTACAD03_ALV'
+          i_save                        = 'A'
+          is_layout                     = ls_layo
+          is_variant                    = ls_variant
+      changing
+          it_sort                       = gt_sort
+          it_outtab                     = gt_outtab
+          it_fieldcatalog                = lt_fcat
+    exceptions
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        others                        = 4
+  ).
+    if sy-subrc <> 0.
+      message id sy-msgid type 'E' number sy-msgno with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    endif.
+  endif.
+
+  data gr_event_handler type ref to lcl_event_handler .
+  create object gr_event_handler .
+
+* Registrando os eventos
+  set handler gr_event_handler->handle_hotspot_click for go_alv.
+  set handler gr_event_handler->handle_toolbar for go_alv.
+  set handler gr_event_handler->handle_user_command for go_alv.
+
+  call method go_alv->set_toolbar_interactive .
+
+endform.
+
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+module status_0100 output.
+  set pf-status 'STATUS100'.
+  set titlebar 'TIT100'.
+  perform select_data.
+  perform display_alv.
+endmodule.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+module user_command_0100 input.
+
+  case sy-ucomm.
+    when 'BACK'.
+      set screen 0.
+    when 'EXIT'.
+      leave program.
+    when 'CANCEL'.
+  endcase.
+
+endmodule.
+
+
+form handle_toolbar using i_object type ref to cl_alv_event_toolbar_set.
+
+  data: ls_toolbar type stb_button.
+  clear ls_toolbar.
+  move 3 to ls_toolbar-butn_type.
+  append ls_toolbar to i_object->mt_toolbar.
+
+  clear ls_toolbar.
+  move 'MSG' to ls_toolbar-function.
+  move icon_transport to ls_toolbar-icon.
+  move 'Teste de Botão' to ls_toolbar-quickinfo.
+  move 'Teste de Botão' to ls_toolbar-text.
+  move ' ' to ls_toolbar-disabled.
+  append ls_toolbar to i_object->mt_toolbar.
+
+endform.                    "handle_toolbar
+
+*-----------------------------------------------------------------------
+* Classe: lcl_event_handler IMPLEMENTATION
+* Descrição: Implementação da classe de evento
+* Entradas: N/A
+* Saídas: N/A
+*-----------------------------------------------------------------------
+class lcl_event_handler implementation .
+
+*--Handle Toolbar
+  method handle_toolbar.
+    perform handle_toolbar using e_object.
+  endmethod .                    "handle_toolbar
+
+*--Handle User Command
+  method handle_user_command .
+    perform handle_user_command using e_ucomm.
+  endmethod.                    "handle_user_command
+
+*--Handle Hotspot Click
+  method handle_hotspot_click .
+    perform handle_hotspot_click using e_row_id e_column_id es_row_no .
+  endmethod .
+
+endclass .                    "lcl_event_handler IMPLEMENTATION
+
+*-----------------------------------------------------------------------
+* Classe: handle_user_command IMPLEMENTATION
+* Descrição: Implementação da classe de evento
+* Entradas: N/A
+* Saídas: N/A
+*-----------------------------------------------------------------------
+form handle_user_command using i_ucomm type syucomm.
+
+  case i_ucomm .
+    when 'MSG' .
+      message i398(00) with 'Parabéns você clicou no botão'.
+  endcase .
+
+endform.                    " handle_user_command
+
+form handle_hotspot_click using i_row_id    type lvc_s_row
+                                i_column_id type lvc_s_col
+                                is_row_no   type lvc_s_roid.
+  field-symbols: <ls_out> like line of gt_outtab.
+  read table gt_outtab assigning <ls_out> index is_row_no-row_id .
+  check sy-subrc = 0.
+  case i_column_id-fieldname.
+    when 'EBELN' .
+      set parameter id 'MAT' field <ls_out>-matnr.
+      call transaction 'ME23N'and skip first screen.
+  endcase.
+endform .

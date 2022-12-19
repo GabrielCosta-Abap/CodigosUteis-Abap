@@ -1,0 +1,46 @@
+  IF p_downl IS NOT INITIAL.
+
+    v_directory = p_downl.
+
+    APPEND 'CONTRATO'      TO t_header.
+    APPEND 'ITEM_CONTRATO' TO t_header.
+    APPEND 'CENTRO'        TO t_header.
+    APPEND 'DEPOSITO'      TO t_header.
+
+    CALL FUNCTION 'GUI_DOWNLOAD'
+      EXPORTING
+        filename                = v_directory " Excel File with path and extentation like "C:\Temp\Test.Xls
+        filetype                = 'DBF'
+        write_field_separator   = ' '
+      TABLES
+        data_tab                = it_datatab     " Final Internal table with Data
+        fieldnames              = t_header    " Technical Field Name
+      EXCEPTIONS
+        file_write_error        = 1
+        no_batch                = 2
+        gui_refuse_filetransfer = 3
+        invalid_type            = 4
+        no_authority            = 5
+        unknown_error           = 6
+        header_not_allowed      = 7
+        separator_not_allowed   = 8
+        filesize_not_allowed    = 9
+        header_too_long         = 10
+        dp_error_create         = 11
+        dp_error_send           = 12
+        dp_error_write          = 13
+        unknown_dp_error        = 14
+        access_denied           = 15
+        dp_out_of_memory        = 16
+        disk_full               = 17
+        dp_timeout              = 18
+        file_not_found          = 19
+        dataprovider_exception  = 20
+        control_flush_error     = 21
+        OTHERS                  = 22.
+    IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    ENDIF.
+
+  ENDIF.

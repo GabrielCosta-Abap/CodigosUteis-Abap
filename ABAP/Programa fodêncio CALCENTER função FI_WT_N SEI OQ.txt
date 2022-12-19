@@ -1,0 +1,345 @@
+PROGRAMA COM SHDB
+*----------------------------------------------------------------------*
+*                     Fusion Consultoria                               *
+*----------------------------------------------------------------------*
+*Cliente....: CalCenter                                                *
+*Autor......: Gabriel da Costa                                         *
+*Data.......: 16/05/2019                                               *
+*Programa...: ZFIR123                                                  *
+*Módulo.....: FI                                                       *
+*Request....: CCDK934619                                               *
+*----------------------------------------------------------------------*
+*                    Histórico das Modificações                        *
+*----------------------------------------------------------------------*
+*Autor      :                                      Data:               *
+*Observações:                                                          *
+*Request    :                                                          *
+*----------------------------------------------------------------------*
+   REPORT zfir123.
+
+   TABLES: t059p, with_item, bkpf.
+
+   TYPES:
+      BEGIN OF ty_with_item,
+         witht    TYPE t059p-witht,
+         wt_postm TYPE t059p-wt_postm,
+         wt_qsshh TYPE with_item-wt_qsshh,
+         belnr    TYPE with_item-belnr,
+         bukrs    TYPE with_item-bukrs,
+         gjahr    TYPE with_item-gjahr,
+         buzei    TYPE with_item-buzei,
+         koart    TYPE with_item-koart,
+         lifnr    TYPE bsik-lifnr,
+         bschl    TYPE bsik-bschl,
+         shkzg    TYPE bsik-shkzg,
+     END OF ty_with_item.
+
+   DATA: gt_with_item TYPE TABLE OF ty_with_item,
+         gs_with_item LIKE LINE OF gt_with_item.
+
+   DATA: it_bkpf TYPE TABLE OF bkpf,
+         is_bkpf LIKE LINE OF it_bkpf.
+   DATA  i_bkpf  TYPE TABLE OF bkpf WITH HEADER LINE.
+
+   DATA: gt_bkpf TYPE TABLE OF bkpf,
+         gs_bkpf LIKE LINE OF gt_bkpf.
+
+   DATA: gt_postab TYPE TABLE OF rfops,
+         gs_postab TYPE rfops.
+   DATA  i_postab  TYPE TABLE OF rfops WITH HEADER LINE.
+
+   DATA: gv_wrbtr TYPE char12,
+         gv_qbshh TYPE char12.
+
+
+   DATA: t_bdc          TYPE TABLE OF bdcdata,
+         s_bdc          TYPE bdcdata,
+         s_options      TYPE ctu_params,
+         t_msg          TYPE TABLE OF bdcmsgcoll,
+         s_msg          TYPE bdcmsgcoll,
+         gv_msgid       TYPE t100-arbgb,
+         gv_msgno       TYPE t100-msgnr,
+         gv_msg         TYPE string,
+         gv_msg2        TYPE string,
+         gv_msg3        TYPE string,
+         v_var1         TYPE balm-msgv1,
+         v_var2         TYPE balm-msgv2,
+         v_var3         TYPE balm-msgv3,
+         v_var4         TYPE balm-msgv4,
+         v_pos          TYPE n LENGTH 2,
+         c_linha        TYPE c LENGTH 17,
+         v_valor_irf    TYPE string,
+         v_valor_fatura TYPE string,
+         v_valor_total  TYPE string.
+
+   DATA ls_bdc TYPE bdcdata.
+
+   SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+   PARAMETERS p_land1 TYPE t059p-land1     OBLIGATORY.
+   PARAMETERS p_bukrs TYPE with_item-bukrs OBLIGATORY.
+   SELECTION-SCREEN END OF BLOCK b1.
+
+   START-OF-SELECTION.
+
+     PERFORM seleciona_dados.
+     PERFORM processa_dados2.
+*&---------------------------------------------------------------------*
+*&      Form  seleciona_dados
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+
+   FORM seleciona_dados.
+
+     SELECT  b~witht
+             b~wt_postm
+             a~wt_qsshh
+             a~belnr
+             a~bukrs
+             a~gjahr
+             a~buzei
+             a~koart
+             c~lifnr
+             c~bschl
+             c~shkzg
+
+        FROM with_item   AS a
+        INNER JOIN t059p AS b ON ( a~witht = b~witht )
+        INNER JOIN bsik  AS c ON ( a~bukrs = c~bukrs
+                             AND   a~belnr = c~belnr
+                             AND   a~gjahr = c~gjahr )
+        INTO CORRESPONDING FIELDS OF TABLE gt_with_item
+        WHERE a~bukrs EQ p_bukrs
+          AND b~land1 EQ p_land1
+          AND a~wt_qsshh < 0
+          AND a~augbl = space
+          AND b~wt_postm = '2'.
+
+     IF gt_with_item IS INITIAL.
+
+       MESSAGE 'Nenhum registro encontrado para atualizar os dados'(398) TYPE 'I' DISPLAY LIKE 'E'.
+       LEAVE TO SCREEN 0.
+
+     ELSE.
+
+       SELECT bukrs
+              belnr
+              gjahr
+              bldat
+              budat
+              monat
+              waers
+
+         FROM bkpf
+         INTO CORRESPONDING FIELDS OF TABLE gt_bkpf
+         FOR ALL ENTRIES IN gt_with_item
+         WHERE belnr EQ gt_with_item-belnr
+           AND bukrs EQ gt_with_item-bukrs
+           AND gjahr EQ gt_with_item-gjahr.
+
+     ENDIF.
+   ENDFORM.                    "seleciona_dados
+
+*&---------------------------------------------------------------------*
+*&      Form  processa_dados2
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+   FORM processa_dados2.
+
+     LOOP AT gt_bkpf INTO gs_bkpf.
+       LOOP AT gt_with_item INTO gs_with_item WHERE bukrs = gs_bkpf-bukrs  "empresa
+                                                AND belnr = gs_bkpf-belnr  "n° doc
+                                                AND gjahr = gs_bkpf-gjahr. "ano
+
+         gs_postab-belnr = gs_with_item-belnr.
+         gs_postab-bukrs = gs_with_item-bukrs.
+         gs_postab-gjahr = gs_bkpf-gjahr.
+         gs_postab-buzei = gs_with_item-buzei.
+         gs_postab-waers = gs_bkpf-waers.
+         gs_postab-budat = gs_bkpf-budat.
+         gs_postab-bldat = gs_bkpf-bldat.
+         gs_postab-bschl = gs_with_item-bschl.
+         gs_postab-koart = gs_with_item-koart.
+         gs_postab-shkzg = gs_with_item-shkzg.
+         gs_postab-dmbtr = ABS( gs_with_item-wt_qsshh ).
+         gs_postab-wrbtr = ABS( gs_with_item-wt_qsshh ).
+         gs_postab-konko = gs_with_item-lifnr.
+         gs_postab-xaktp = 'X'.
+         gs_postab-xakts = 'X'.
+         i_postab = gs_postab.
+         APPEND gs_postab TO gt_postab.
+         CLEAR gs_postab.
+
+         is_bkpf-bukrs = gs_with_item-bukrs.
+         is_bkpf-gjahr = sy-datum(4).
+         is_bkpf-blart = 'KZ'.
+         is_bkpf-bldat = sy-datum.
+         is_bkpf-budat = sy-datum.
+         is_bkpf-monat = sy-datum+4(2).
+         is_bkpf-tcode = 'FBZ2'.
+         is_bkpf-waers = gs_bkpf-waers.
+         i_bkpf = is_bkpf.
+         APPEND is_bkpf TO it_bkpf.
+         CLEAR is_bkpf.
+         i_postab[] = gt_postab.
+         i_bkpf[]   = it_bkpf.
+
+*         READ TABLE i_bkpf with key bukrs.
+
+         CALL FUNCTION 'FI_WT_FB05_CALCULATE_WT'
+           EXPORTING                                                   "gs_postab-qbshh, "valor irf
+             i_aktyp  = 'H'                                             "gs_postab-qbshb. "valor irf
+             i_dyncl  = 'Z'
+           TABLES
+             i_postab = i_postab
+             i_bkpf   = i_bkpf.
+
+         READ TABLE i_postab INDEX 1.
+         gv_wrbtr = i_postab-wrbtr - i_postab-qbshh.
+         gv_qbshh = i_postab-qbshh.
+
+         IF sy-subrc NE 0.
+
+           MESSAGE 'Não foi possível realizar a atualização'(398) TYPE 'I' DISPLAY LIKE 'E'.
+
+         ELSE.
+
+
+           PERFORM add_bdc USING 'X' 'SAPMF05L'   '0102'.
+           PERFORM add_bdc USING ' ' 'BDC_CURSOR' 'RF05L-XKKRE'.
+           PERFORM add_bdc USING ' ' 'BDC_OKCODE' '/00'.
+           PERFORM add_bdc USING ' ' 'RF05L-BELNR' i_postab-belnr.
+           PERFORM add_bdc USING ' ' 'RF05L-BUKRS' i_postab-bukrs.
+           PERFORM add_bdc USING ' ' 'RF05L-GJAHR' i_postab-gjahr.
+           PERFORM add_bdc USING ' ' 'RF05L-BUZEI' i_postab-buzei.
+           PERFORM add_bdc USING ' ' 'RF05L-XKKRE' 'X'.
+
+           PERFORM add_bdc USING 'X' 'SAPMF05L'   '0302'.
+           PERFORM add_bdc USING ' ' 'BDC_CURSOR' 'BSEG-WSKTO'.
+           PERFORM add_bdc USING ' ' 'BDC_OKCODE' '=ZK'.
+
+           PERFORM add_bdc USING 'X' 'SAPMF05L'   '1302'.
+           PERFORM add_bdc USING ' ' 'BDC_CURSOR' 'BSEG-XREF2'.
+           PERFORM add_bdc USING ' ' 'BDC_OKCODE' '=ENTR'.
+           PERFORM add_bdc USING ' ' 'BSEG-XREF1' gv_qbshh.
+           PERFORM add_bdc USING ' ' 'BSEG-XREF2' gv_wrbtr.
+
+           PERFORM add_bdc USING 'X' 'SAPMF05L'   '0302'.
+           PERFORM add_bdc USING ' ' 'BDC_CURSOR' 'BSEG-WSKTO'.
+           PERFORM add_bdc USING ' ' 'BDC_OKCODE' '=AE'.
+
+           PERFORM chama_fb09.
+           PERFORM clear_vars.
+
+         ENDIF.
+       ENDLOOP.
+     ENDLOOP.
+   ENDFORM.                    "processa_dados2
+
+*&---------------------------------------------------------------------*
+*&      Form  SHDB
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+   FORM add_bdc USING iv_tipo       TYPE c
+                      iv_nome       TYPE c
+                      iv_valor      TYPE any.
+
+     CASE iv_tipo.
+       WHEN 'X'.
+         ls_bdc-dynbegin = 'X'.
+         ls_bdc-program  = iv_nome.
+         ls_bdc-dynpro   = iv_valor.
+       WHEN ' '.
+         ls_bdc-dynbegin = ' '.
+         ls_bdc-fnam     = iv_nome.
+         ls_bdc-fval     = iv_valor.
+     ENDCASE.
+     APPEND ls_bdc TO t_bdc.
+     CLEAR ls_bdc.
+
+   ENDFORM.                    "add_bdc
+
+*&---------------------------------------------------------------------*
+*&      Form  chama_fb09
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+   FORM chama_fb09.
+
+     s_options-dismode = 'N'.
+     CALL TRANSACTION 'FB09' USING          t_bdc
+                             MODE           s_options-dismode
+                             UPDATE         'S'
+                             MESSAGES INTO  t_msg.
+
+     IF sy-subrc EQ 0.
+
+       v_valor_irf    = i_postab-qbshh.
+       v_valor_fatura = i_postab-wrbtr - i_postab-qbshh.
+       v_valor_total  = i_postab-wrbtr.
+
+       COMMIT WORK AND WAIT.
+       CONCATENATE 'XREF1 =' v_valor_irf '- Documento' i_postab-belnr 'compensado.'  INTO gv_msg SEPARATED BY space.
+       CONCATENATE 'XREF2 =' v_valor_fatura 'Documento' i_postab-belnr 'compensado.' INTO gv_msg2 SEPARATED BY space.
+       CONCATENATE 'WRBTR =' v_valor_total '(Valor total)'                           INTO gv_msg3 SEPARATED BY space.
+       WRITE: / gv_msg,
+              / gv_msg2,
+              / gv_msg3.
+       ULINE.
+
+     ELSE.
+
+       LOOP AT t_msg INTO s_msg.
+         CLEAR: gv_msgid, gv_msgno, v_var1, v_var2, v_var3, v_var4.
+
+         gv_msgid = s_msg-msgid.
+         gv_msgno = s_msg-msgnr.
+         v_var1   = s_msg-msgv1.
+         v_var2   = s_msg-msgv2.
+         v_var3   = s_msg-msgv3.
+         v_var4   = s_msg-msgv4.
+
+         CALL FUNCTION 'MESSAGE_PREPARE'
+           EXPORTING
+             language               = sy-langu
+             msg_id                 = gv_msgid
+             msg_no                 = gv_msgno
+             msg_var1               = v_var1
+             msg_var2               = v_var2
+             msg_var3               = v_var3
+             msg_var4               = v_var4
+           IMPORTING
+             msg_text               = gv_msg
+           EXCEPTIONS
+             function_not_completed = 1
+             message_not_found      = 2
+             OTHERS                 = 3.
+         WRITE: / gv_msg.
+
+       ENDLOOP.
+     ENDIF.
+
+   ENDFORM.                    "chama_fb09
+
+*&---------------------------------------------------------------------*
+*&      Form  clear_vars
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+   FORM clear_vars.
+
+     CLEAR i_postab[].
+     CLEAR i_postab.
+     CLEAR gt_postab.
+     CLEAR i_bkpf[].
+     CLEAR i_bkpf.
+     CLEAR it_bkpf.
+     CLEAR v_valor_irf.
+     CLEAR v_valor_fatura.
+     CLEAR gv_wrbtr.
+     CLEAR gv_qbshh.
+     CLEAR t_bdc.
+
+   ENDFORM.                    "clear_vars

@@ -1,0 +1,276 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZPHR001_CLS
+*&---------------------------------------------------------------------*
+CLASS lcl_relatorio DEFINITION.
+  PUBLIC SECTION.
+
+    TYPES:
+      BEGIN OF ty_relat,
+        seq	         TYPE char20,
+        id_unidade   TYPE char20,
+        unidade	     TYPE char20,
+        id_posicao   TYPE char20,
+        posicao	     TYPE char20,
+        cc           TYPE char20,
+        descricao_cc TYPE char20,
+        id_usuario   TYPE char20,
+        usuario      TYPE char20,
+      END OF ty_relat,
+
+      BEGIN OF ty_1018,
+        otype TYPE   hrp1018-otype,
+        objid TYPE   hrp1018-objid,
+        kokrs TYPE   hrt1018-kokrs,
+        kostl TYPE   hrt1018-kostl,
+      END OF ty_1018,
+
+      BEGIN OF ty_users,
+        bname     TYPE xubname,
+        name_text TYPE text80,
+      END OF ty_users.
+
+    DATA: lt_relat TYPE TABLE OF ty_relat,
+          lt_struc TYPE TABLE OF struc,
+          lt_1018  TYPE TABLE OF ty_1018,
+          lt_users TYPE TABLE OF ty_users.
+
+    METHODS:
+      seleciona_dados,
+      prepara_dados,
+      exibe_dados.
+
+  PRIVATE SECTION.
+
+    DATA: lr_table     TYPE REF TO cl_salv_table,
+          lr_functions TYPE REF TO cl_salv_functions,
+          lr_display   TYPE REF TO cl_salv_display_settings,
+          columns      TYPE REF TO cl_salv_columns_table,
+          column       TYPE REF TO cl_salv_column,
+          column_table TYPE REF TO cl_salv_column_table.
+
+    DATA: lo_layout  TYPE REF TO cl_salv_layout,
+          lf_variant TYPE slis_vari,
+          ls_key     TYPE salv_s_layout_key.
+
+    METHODS set_coltxt
+      IMPORTING columnname    TYPE lvc_fname
+                set_long_text TYPE scrtext_l.
+
+    METHODS set_hotspot_fields
+      IMPORTING columnname TYPE lvc_fname.
+
+    METHODS:
+      set_alv_header,
+      set_layout,
+      define_colnames,
+      adiciona_sequencial.
+
+ENDCLASS.
+
+CLASS lcl_relatorio IMPLEMENTATION.
+
+  METHOD seleciona_dados.
+
+    CASE 'X'.
+      WHEN p_pres.
+        lt_struc = zcl_mm_strat_wf_abs=>select_hr_struct_by_name( zcl_mm_strat_wf_abs=>mc_pres ).
+
+      WHEN p_ge.
+        lt_struc = zcl_mm_strat_wf_abs=>select_hr_struct_by_name( zcl_mm_strat_wf_abs=>mc_ge ).
+
+      WHEN p_gt.
+        lt_struc = zcl_mm_strat_wf_abs=>select_hr_struct_by_name( zcl_mm_strat_wf_abs=>mc_gt ).
+    ENDCASE.
+
+    IF lt_struc IS NOT INITIAL AND p_gt IS INITIAL.
+
+      DELETE lt_struc WHERE otype = 'C'.
+
+      SELECT hrp1018~otype
+             hrp1018~objid
+             hrt1018~kokrs
+             hrt1018~kostl
+        FROM hrt1018
+        JOIN hrp1018 ON hrp1018~tabnr EQ hrt1018~tabnr
+        INTO TABLE lt_1018
+             WHERE hrp1018~plvar EQ '01'
+               AND hrp1018~otype EQ 'S'
+               AND hrp1018~begda LE sy-datum
+               AND hrp1018~endda GE sy-datum.
+      DATA ls_users LIKE LINE OF lt_users.
+      LOOP AT lt_struc INTO DATA(ls_struc) WHERE otype = 'US'.
+        ls_users-bname = ls_struc-objid.
+        APPEND ls_users TO lt_users.
+      ENDLOOP.
+
+      SORT lt_users BY bname.
+      DELETE ADJACENT DUPLICATES FROM lt_users.
+
+      SELECT a~bname
+             b~name_text
+       FROM usr21 AS a
+       LEFT JOIN adrp AS b ON b~persnumber EQ a~persnumber
+       INTO TABLE lt_users
+        FOR ALL ENTRIES IN lt_users
+      WHERE bname = lt_users-bname.
+
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD prepara_dados.
+    DATA ls_relat LIKE LINE OF lt_relat.
+    DATA lv_seqant TYPE char20.
+
+    LOOP AT lt_struc INTO DATA(ls_struc).
+
+      IF ls_struc-otype = 'O' AND ls_relat IS NOT INITIAL.
+
+        ls_struc-objid  = ls_relat-id_posicao.
+        REPLACE ALL OCCURRENCES OF 'S' IN ls_struc-objid WITH space.
+
+        LOOP AT lt_1018 INTO DATA(ls_1018) WHERE otype = 'S'
+                                             AND objid = ls_struc-objid.
+
+          ls_relat-cc               = ls_1018-kostl.
+          ls_relat-descricao_cc     = 'texto cc'.
+          APPEND ls_relat TO lt_relat.
+
+        ENDLOOP.
+        CLEAR ls_relat.
+      ENDIF.
+
+      CASE ls_struc-otype.
+        WHEN 'O'.
+          ls_relat-id_unidade       = |{ ls_struc-otype } { ls_struc-objid }|.
+          ls_relat-unidade          = 'texto unidade'.
+        WHEN 'S'.
+          ls_relat-id_posicao       = |{ ls_struc-otype } { ls_struc-objid }|.
+          ls_relat-posicao          = 'texto posição'.
+        WHEN 'US'.
+          ls_relat-id_usuario       = |{ ls_struc-otype } { ls_struc-objid }|.
+          ls_relat-usuario          = lt_users[ bname = ls_struc-objid ]-name_text.
+      ENDCASE.
+
+    ENDLOOP.
+
+    me->adiciona_sequencial( ).
+
+  ENDMETHOD.
+
+  METHOD adiciona_sequencial.
+
+    DATA lv_seq1 TYPE i VALUE '0'.
+    DATA lv_seq2 TYPE i VALUE '0'.
+    DATA lv_seq3 TYPE i VALUE '0'.
+    DATA ls_ant LIKE LINE OF lt_relat.
+
+    LOOP AT lt_relat ASSIGNING FIELD-SYMBOL(<ls_relat>).
+      IF <ls_relat>-id_unidade <> ls_ant-id_unidade.
+        ADD 1 TO lv_seq1.
+        lv_seq2 = '0'.
+      ELSE.
+        ADD 1 TO lv_seq2.
+      ENDIF.
+
+      <ls_relat>-seq = |{ lv_seq1 }.{ lv_seq2 }.{ lv_seq3 }|.
+      ls_ant = <ls_relat>.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD exibe_dados.
+
+    cl_salv_table=>factory(
+          IMPORTING
+            r_salv_table = lr_table
+          CHANGING
+            t_table      = lt_relat
+ ).
+
+    DATA(selections) = lr_table->get_selections( ).
+    selections->set_selection_mode( 2 ).
+
+    columns = lr_table->get_columns( ).
+    columns->set_optimize( ).
+    me->define_colnames( ).
+    me->set_layout( ).
+    me->set_alv_header( ).
+    lr_table->display( ).
+
+  ENDMETHOD.
+
+  METHOD define_colnames.
+
+    me->set_coltxt( columnname    = 'SEQ'
+                    set_long_text = 'Sequencial' ).
+
+    me->set_coltxt( columnname    = 'ID_UNIDADE'
+                    set_long_text = 'ID Unidade' ).
+
+    me->set_coltxt( columnname    = 'UNIDADE'
+                    set_long_text = 'Unidade'  ).
+
+    me->set_coltxt( columnname    = 'ID_POSICAO'
+                    set_long_text = 'ID Posição' ).
+
+    me->set_coltxt( columnname    = 'POSICAO'
+                    set_long_text = 'Posição'  ).
+
+    me->set_coltxt( columnname    = 'CC'
+                set_long_text = 'Centro de Custo' ).
+
+    me->set_coltxt( columnname    = 'DESCRICAO_CC'
+                    set_long_text = 'Descrição CC'  ).
+
+    me->set_coltxt( columnname    = 'ID_USUARIO'
+                set_long_text = 'ID Usuário'  ).
+
+    me->set_coltxt( columnname    = 'USUARIO'
+                    set_long_text = 'Usuário'  ).
+
+  ENDMETHOD.
+
+  METHOD set_coltxt.
+    column = columns->get_column( columnname = columnname ).
+    column->set_short_text( '' ).
+    column->set_medium_text( '' ).
+    column->set_long_text( set_long_text ).
+    column->set_alignment( 3 ).
+  ENDMETHOD.
+
+  METHOD set_hotspot_fields.
+
+    TRY.
+        column_table ?= columns->get_column( columnname ).
+      CATCH cx_salv_not_found.
+    ENDTRY.
+
+    TRY.
+        column_table->set_cell_type(
+         EXPORTING
+           value = if_salv_c_cell_type=>hotspot ).
+        .
+      CATCH cx_salv_data_error .
+    ENDTRY.
+
+  ENDMETHOD.
+
+  METHOD set_alv_header.
+    lr_functions = lr_table->get_functions( ).
+    lr_functions->set_all( abap_true ).
+
+    lr_display = lr_table->get_display_settings( ).
+    lr_display->set_list_header( 'Relatório de Estrutura Organizacional' ).
+    lr_display->set_striped_pattern( abap_true ).
+  ENDMETHOD.
+
+  METHOD set_layout.
+    ls_key-report = sy-repid.
+    lo_layout = lr_table->get_layout( ).
+    lo_layout->set_key( ls_key ).
+    lo_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+    lo_layout->set_initial_layout( p_lay ).
+  ENDMETHOD.
+
+ENDCLASS.

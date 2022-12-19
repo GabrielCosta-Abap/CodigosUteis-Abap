@@ -1,0 +1,15 @@
+DATA lt_tab TYPE TABLE OF mara.
+
+SELECT matnr FROM mara INTO CORRESPONDING FIELDS OF TABLE lt_tab.
+
+DATA lr_range TYPE RANGE OF matnr.
+
+lr_range = VALUE #( FOR ls_mara IN lt_tab (
+                            sign = 'I'
+                            option = 'EQ'
+                            low = ls_mara-matnr ) ).
+
+
+LOOP AT lr_range INTO DATA(ls_range).
+  WRITE: ls_range-low, /.
+ENDLOOP.

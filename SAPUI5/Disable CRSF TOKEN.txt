@@ -1,0 +1,1 @@
+https://answers.sap.com/questions/13119596/how-to-disable-x-csrf-token-in-sicf-service-not-od.html

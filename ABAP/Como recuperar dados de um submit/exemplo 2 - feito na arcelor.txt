@@ -1,0 +1,115 @@
+  DATA: lr_fields      TYPE REF TO cl_abap_structdescr,
+        ls_entity      LIKE LINE OF et_entity,
+        ls_data_fields TYPE zst_req_lib.
+
+  FIELD-SYMBOLS <lt_data> TYPE ANY TABLE.
+
+  cl_salv_bs_runtime_info=>set(
+    EXPORTING
+      display        = abap_false
+      metadata       = abap_false
+      data           =  abap_true
+  ).
+
+  SUBMIT zbmmmr945 WITH p_user = i_user AND RETURN.
+
+  TRY.
+
+      cl_salv_bs_runtime_info=>get_data_ref(
+      IMPORTING r_data = DATA(lr_data)
+      ).
+
+      ASSIGN lr_data->* TO <lt_data>.
+
+    CATCH cx_salv_bs_sc_runtime_info.
+      FREE et_entity.
+      UNASSIGN <lt_data>.
+  ENDTRY.
+  cl_salv_bs_runtime_info=>clear_all( ).
+
+  IF <lt_data> IS ASSIGNED.
+
+    lr_fields ?= cl_abap_typedescr=>describe_by_data( ls_data_fields ).
+
+    LOOP AT <lt_data> ASSIGNING FIELD-SYMBOL(<ls_data>).
+
+      LOOP AT lr_fields->components INTO DATA(ls_comp).
+
+        ASSIGN COMPONENT ls_comp-name OF STRUCTURE <ls_data> TO FIELD-SYMBOL(<lv_content>).
+        IF sy-subrc <> 0.
+          CONTINUE.
+        ENDIF.
+
+        CASE ls_comp-name.
+          WHEN 'BANFN'.
+            ls_entity-preq_no     = <lv_content>.
+          WHEN 'BNFPO'.
+            ls_entity-preq_item   = <lv_content>.
+          WHEN 'BADAT'.
+            ls_entity-preq_date   = <lv_content>.
+          WHEN 'TXZ01'.
+            ls_entity-short_text  = <lv_content>.
+          WHEN 'MENGE'.
+            ls_entity-quantity    = <lv_content>.
+          WHEN 'MEINS'.
+            ls_entity-unit        = <lv_content>.
+          WHEN 'GSWRT'.
+            ls_entity-c_amt_bapi  = <lv_content>.
+          WHEN 'PEINH'.
+            ls_entity-price_unit  = <lv_content>.
+          WHEN 'WERKS'.
+            ls_entity-plant       = <lv_content>.
+          WHEN 'ERNAM'.
+            ls_entity-created_by  = <lv_content>.
+*          WHEN 'FRGKZ'.
+*            ls_entity-rel_code    = <lv_content>.
+          WHEN 'FRGGR'.
+            ls_entity-rel_group   = <lv_content>.
+          WHEN 'FRGST'.
+            ls_entity-rel_strat   = <lv_content>.
+        ENDCASE.
+
+      ENDLOOP.
+
+      APPEND ls_entity TO et_entity.
+    ENDLOOP.
+
+    IF iv_rel_group IS NOT INITIAL.
+      DELETE et_entity WHERE rel_group <> iv_rel_group.
+    ENDIF.
+
+    IF iv_rel_code IS NOT INITIAL.
+      DELETE et_entity WHERE rel_code <> iv_rel_code.
+    ENDIF.
+
+    " Centro
+    IF NOT ir_plant[] IS INITIAL.
+      DELETE et_entity WHERE plant NOT IN ir_plant.
+    ENDIF.
+
+    " Nº requisição de compra
+    IF NOT ir_preq_no[] IS INITIAL.
+      DELETE et_entity WHERE preq_no NOT IN ir_preq_no.
+    ENDIF.
+
+    " gets the correct rel_code for approvation.
+    IF et_entity IS NOT INITIAL.
+      SELECT frggr,
+             frgsx,
+             frgc1
+        FROM t16fs
+        INTO TABLE @DATA(lt_t16fs)
+        FOR ALL ENTRIES IN @et_entity
+          WHERE frggr EQ @et_entity-rel_group
+            AND frgsx EQ @et_entity-rel_strat.
+      IF sy-subrc = 0.
+
+        LOOP AT et_entity ASSIGNING FIELD-SYMBOL(<ls_entity>).
+
+          <ls_entity>-rel_code = lt_t16fs[ frggr = <ls_entity>-rel_group
+                                           frgsx = <ls_entity>-rel_strat ]-frgc1.
+        ENDLOOP.
+
+      ENDIF.
+    ENDIF.
+  ENDIF.

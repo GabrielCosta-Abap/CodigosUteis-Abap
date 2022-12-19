@@ -1,0 +1,23 @@
+*&---------------------------------------------------------------------*
+*& Report ZEMPLOYEE
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+report zemployee.
+
+DATA: lt_mara TYPE STANDARD TABLE OF mara,                "#EC NEEDED
+      lv_mara TYPE string.                                 "#EC NEEDED
+
+FIELD-SYMBOLS: <ls_mara> TYPE mara.                       "#EC NEEDED
+
+PARAMETERS: p_matnr LIKE <ls_mara>-matnr OBLIGATORY.
+
+SELECT *
+FROM mara
+INTO TABLE lt_mara
+WHERE matnr = p_matnr. "this line contains
+
+LOOP AT lt_mara ASSIGNING <ls_mara>.
+  lv_mara = |{ <ls_mara>-matnr } | && |{ <ls_mara>-ernam } { <ls_mara>-laeda } | && |{ <ls_mara>-ersda }|.
+  WRITE: / lv_mara.
+ENDLOOP.

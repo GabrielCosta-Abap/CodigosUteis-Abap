@@ -1,0 +1,25 @@
+start-of-selection.
+
+dir = p_file.
+
+  call method cl_gui_frontend_services=>directory_exist
+    exporting
+      directory            = dir
+    receiving
+      result               = rc
+    exceptions
+      cntl_error           = 1
+      error_no_gui         = 2
+      wrong_parameter      = 3
+      not_supported_by_gui = 4
+      others               = 5.
+
+  if rc = 'X'.
+
+    write:/ 'The directory does exist'.
+
+  else.
+
+    write:/ 'The directory does not exist'.
+
+  endif.

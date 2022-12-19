@@ -1,0 +1,22 @@
+data: gr_table type ref to cl_salv_table.
+data: gr_functions type ref to cl_salv_functions.
+
+
+data: it_spfli type table of spfli.
+
+
+start-of-selection.
+
+  select *
+     into table it_spfli
+    from spfli.
+
+  cl_salv_table=>factory(
+   importing
+     r_salv_table = gr_table
+     changing t_table = it_spfli ).
+
+  gr_functions = gr_table->get_functions( ).
+  gr_functions->set_all( abap_true ).
+
+  gr_table->display( ).

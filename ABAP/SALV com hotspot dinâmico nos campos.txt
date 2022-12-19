@@ -1,0 +1,79 @@
+  METHOD imprime.
+
+    DATA: lr_table     TYPE REF TO cl_salv_table,
+          lr_functions TYPE REF TO cl_salv_functions,
+          lr_display   TYPE REF TO cl_salv_display_settings,
+          columns      TYPE REF TO cl_salv_columns_table,
+          column       TYPE REF TO cl_salv_column_table,
+          lo_events    TYPE REF TO cl_salv_events_table.
+    DATA: lo_table       TYPE REF TO cl_abap_tabledescr,
+          lo_struct      TYPE REF TO cl_abap_structdescr,
+          lt_comp        TYPE abap_component_tab,
+          ls_comp        TYPE abap_componentdescr,
+          lv_coltext(30) TYPE c,
+          lv_fname       TYPE lvc_fname.
+    DATA: lo_layout  TYPE REF TO cl_salv_layout,
+          lf_variant TYPE slis_vari,
+          ls_key     TYPE salv_s_layout_key.
+
+    cl_salv_table=>factory(
+       IMPORTING
+       r_salv_table = lr_table
+       CHANGING
+       t_table      = gt_output
+     ).
+
+    "--- Configura o alv:
+    columns = lr_table->get_columns( ).
+    columns->set_optimize( ).
+
+    "--- Define hotspot dinamicamente para os campos
+    lo_table ?= cl_abap_typedescr=>describe_by_data( gt_output ).
+    lo_struct ?= lo_table->get_table_line_type( ).
+    lt_comp = lo_struct->get_components( ).
+
+    LOOP AT lt_comp INTO ls_comp.
+
+      CASE ls_comp-name.
+        WHEN 'FLAG' OR   'BELNR' OR 'ZNRDOC01' OR 'ZNRDOC02' OR 'ZNRDOC03' OR 'ZNRDOC04'.
+          lv_fname = ls_comp-name.
+          TRY.
+              column ?= columns->get_column( lv_fname ).
+            CATCH cx_salv_not_found.
+          ENDTRY.
+
+*   set the hotspot for belnr column
+          TRY.
+              column->set_cell_type( if_salv_c_cell_type=>hotspot ).
+              .
+            CATCH cx_salv_data_error .
+          ENDTRY.
+*...Events
+          lo_events = lr_table->get_event( ).
+
+*   event handler
+          DATA(r_evento) = NEW lcl_alv_handler( ).
+          SET HANDLER r_evento->on_click FOR lo_events.
+
+      ENDCASE.
+    ENDLOOP.
+
+    "--- Layout
+    ls_key-report = sy-repid.
+    lo_layout = lr_table->get_layout( ).
+    lo_layout->set_key( ls_key ).
+    lo_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+    lo_layout->set_initial_layout( r_param->v_vari ).
+
+    "--- Funções do alv
+    lr_functions = lr_table->get_functions( ).
+    lr_functions->set_all( abap_true ).
+
+    "--- Exibição
+    lr_display = lr_table->get_display_settings( ).
+    lr_display->set_list_header( 'Relatório de Fechamento de Caixa' ).
+    lr_display->set_striped_pattern( abap_true ).
+
+    lr_table->display( ).
+
+  ENDMETHOD.

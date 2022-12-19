@@ -1,0 +1,17 @@
+
+data: lt_group_h001 like mt_group_h001.
+
+
+loop at mt_group_h001 ASSIGNING FIELD-SYMBOL(<fs_group_h001>).
+  READ TABLE lt_group_h001 into data(ls_aux) with key reg = <fs_group_h001>-reg
+                                              f_rec_value = <fs_group_h001>-f_rec_value.
+    if sy-subrc <> 0.
+      ls_aux-reg           =  <fs_group_h001>-reg.
+      ls_aux-f_rec_value   =  <fs_group_h001>-f_rec_value.
+      APPEND ls_aux to lt_group_h001.
+      clear ls_aux.
+    endif.
+ENDLOOP.
+
+free mt_group_h001.
+ mt_group_h001[] = lt_group_h001[].

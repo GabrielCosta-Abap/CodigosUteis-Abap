@@ -1,0 +1,30 @@
+  data(ls_layo) = value lvc_s_layo( cwidth_opt = 'A'
+                                    zebra      = abap_true
+                                    sel_mode   = 'A' ).
+
+  data: ls_variant type disvariant.
+
+  ls_variant-report = sy-repid.
+
+  if go_alv is initial.
+
+    go_alv = new #( i_parent = cl_gui_container=>default_screen ).
+    go_alv->set_table_for_first_display(
+
+      exporting
+          i_structure_name              = 'ZTBGABRIEL001'
+          i_save                        = 'A'
+          is_layout                     = ls_layo
+          is_variant                    = ls_variant
+      changing
+          it_outtab                     = gt_gabriel
+    exceptions
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        others                        = 4
+  ).
+    if sy-subrc <> 0.
+      message id sy-msgid type 'E' number sy-msgno with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    endif.
+  endif.

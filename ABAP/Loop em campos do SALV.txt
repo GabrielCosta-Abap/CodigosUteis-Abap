@@ -1,0 +1,9 @@
+ LOOP AT r_alv->get_columns( )->get( ) INTO DATA(s_linha).
+
+    s_linha-r_column->set_visible(
+
+        value = if_salv_c_bool_sap=>false
+
+    ).
+
+  ENDLOOP.

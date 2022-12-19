@@ -1,0 +1,12 @@
+segue em anexo um exemplo que rotina que utiliza classe para 
+recuperar dados da execução de um submit. 
+Eu não utilizo o EXPORT LIST FROM MEMORY para recuperar dados de ALV.
+Além de ter que fazer split do arquivo txt recuperado de memória, 
+há limitação de tamanho de arquivo. Se passar de 2g dá pau.
+Reletório standard de imobilizado, por exemplo, fácil fácil passam
+de 2G e o export list from mamory não bufa...
+Se alguém precisar também dicas de 'paralelismo', como executar
+vários reports, z ou standard, em paralelo, tenho exemplo de como fazer e
+de como recuperar dados. Essa alternativa é muito bom para evitarmos
+de fazer Z de relatórios standard. Pode-se fazer um Z que executa 
+via submit os standards e junta numa saída só, e esse standards podem ser executados em paralelo

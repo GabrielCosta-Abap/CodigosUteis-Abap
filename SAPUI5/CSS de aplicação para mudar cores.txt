@@ -1,0 +1,50 @@
+/* Colar no css do projeto para definir cores da aplicação */
+
+.sapMPageScroll{
+background: -moz-linear-gradient(top,  #f4fff4 0%, #d6dbbf 100%); /* FF3.6+ */
+background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#f4fff4), color-stop(100%,#d6dbbf)); /* Chrome,Safari4+ */
+background: -webkit-linear-gradient(top,  #f4fff4 0%,#d6dbbf 100%); /* Chrome10+,Safari5.1+ */
+background: -o-linear-gradient(top,  #f4fff4 0%,#d6dbbf 100%); /* Opera 11.10+ */
+background: -ms-linear-gradient(top,  #f4fff4 0%,#d6dbbf 100%); /* IE10+ */
+background: linear-gradient(to bottom,  #f4fff4 0%,#d6dbbf 100%); /* W3C */
+filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#f4fff4', endColorstr='#d6dbbf',GradientType=0 ); /* IE6-8 */
+}
+.sapMGlobalBackgroundColor{background-image:linear-gradient(to bottom,#3D3D3D 0,#7d7e7d 100%);}
+.sapMGlobalBackgroundImage{background-image:none;}
+
+    /* Este trecho define a cor das barras de título */
+.sap-desktop .sapMBar.sapMPageHeader{background-color:#9acd32 !important; }
+.sapMBar-CTX .sapMLabel{color:#ffffff;}
+.sapMTile{
+  -moz-border-radius: 10px;
+  -webkit-border-radius: 10px;
+  -khtml-border-radius: 10px;
+  border-radius: 10px;
+background: -moz-linear-gradient(top,  #ffffff 0%, #f6f6f6 47%, #ededed 100%); /* FF3.6+ */
+background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#ffffff), color-stop(47%,#f6f6f6), color-stop(100%,#ededed)); /* Chrome,Safari4+ */
+background: -webkit-linear-gradient(top,  #ffffff 0%,#f6f6f6 47%,#ededed 100%); /* Chrome10+,Safari5.1+ */
+background: -o-linear-gradient(top,  #ffffff 0%,#f6f6f6 47%,#ededed 100%); /* Opera 11.10+ */
+background: -ms-linear-gradient(top,  #ffffff 0%,#f6f6f6 47%,#ededed 100%); /* IE10+ */
+background: linear-gradient(to bottom,  #ffffff 0%,#f6f6f6 47%,#ededed 100%); /* W3C */
+filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#ffffff', endColorstr='#ededed',GradientType=0 ); /* IE6-8 */}
+.sapMPullDown{background-color:#ffffff;}
+.sapMList .sapMLIB.sapMGHLI{background-color:#F0FFC9;}
+.sapMBar-CTX .sapMBtnContent>.sapUiIcon,.sapMBar-CTX .sapMBtn{color:#ffffff;}
+.sapMPageHeader.sapMBar-CTX .sapMBtn, .sapMPageHeader.sapMBar-CTX .sapMSlt{border-image:linear-gradient(#000000 8.33%,#666666 8.33%) 0 100%;}
+.sapMSplitContainerMaster:not(.sapMSplitContainerMasterVisible):before{border-right:1px solid #000000;}
+.sapMShellBrandingBar{background-color:#000000;}
+.sapMBar.sapMPageHeader:before{border-top:0.25rem solid #000000;}
+.sapMFooter-CTX .sapMSegBBtn{border-color:#000000;}
+.sap-desktop footer.sapMBar, .sap-desktop footer.sapMBar.sapMBarTranslucent{background-color:#000000 !important;}
+.sapUshellTileInner{ -moz-border-radius: 10px;
+-webkit-border-radius: 10px;
+ -khtml-border-radius: 10px;
+border-radius: 10px;
+border:1px solid black;
+background: -moz-linear-gradient(top,  #ffffff 0%, #f6f6f6 47%, #ededed 100%); /* FF3.6+ */
+background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#ffffff), color-stop(47%,#f6f6f6), color-stop(100%,#ededed)); /* Chrome,Safari4+ */
+background: -webkit-linear-gradient(top,  #ffffff 0%,#f6f6f6 47%,#ededed 100%); /* Chrome10+,Safari5.1+ */
+background: -o-linear-gradient(top,  #ffffff 0%,#f6f6f6 47%,#ededed 100%); /* Opera 11.10+ */
+background: -ms-linear-gradient(top,  #ffffff 0%,#f6f6f6 47%,#ededed 100%); /* IE10+ */
+background: linear-gradient(to bottom,  #ffffff 0%,#f6f6f6 47%,#ededed 100%); /* W3C */
+filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#ffffff', endColorstr='#ededed',GradientType=0 ); /* IE6-8 */}

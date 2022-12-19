@@ -1,0 +1,113 @@
+*&---------------------------------------------------------------------*
+*& Report  ZPACADR03_4
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+report zpacadr03_4.
+
+tables: zvwacad_03, ekko, ekpo.
+
+types:
+  begin of ty_soma,
+    ebeln type ebeln,
+    netwr type netwr,
+  end of ty_soma.
+
+data: gt_view type table of zvwacad_03,
+      gs_view like line of gt_view.
+
+data: gt_soma type table of ty_soma,
+      gs_soma like line of gt_soma.
+
+data gv_netwr type ekpo-netwr.
+
+selection-screen begin of block b1 with frame title text-001.
+selection-screen skip.
+selection-screen begin of block b2 with frame.
+*selection-screen skip.
+select-options so_ebeln for zvwacad_03-ebeln.
+selection-screen skip.
+*selection-screen skip.
+selection-screen uline.
+parameters p_soma as checkbox.
+selection-screen skip.
+selection-screen skip.
+selection-screen end of block b2.
+selection-screen end of block b1.
+
+start-of-selection.
+
+  perform select_data.
+  perform prepare_data.
+
+end-of-selection.
+
+  perform display_data.
+
+form select_data.
+
+  select *
+    from zvwacad_03
+    into table gt_view
+    where ebeln in so_ebeln.
+
+endform.
+
+form prepare_data.
+  clear gv_netwr.
+  loop at gt_view into gs_view.
+
+    add gs_view-netwr to gv_netwr.
+    gs_soma-ebeln = gs_view-ebeln.
+    gs_soma-netwr = gs_view-netwr.
+    collect gs_soma into gt_soma.
+
+  endloop.
+endform.
+
+form display_data.
+  data lv_par type i value 0.
+  data lv_index type sy-tabix.
+
+  loop at gt_view into gs_view.
+
+    lv_par = sy-tabix mod 2.
+    if lv_par = 0.
+      format color 3.
+    else.
+      format color 1.
+    endif.
+*  if col >= 2.
+*    col = 0.
+*  endif.
+*  format color = col.
+
+    write: / gs_view-ebeln,
+             gs_view-bukrs,
+             gs_view-bstyp,
+             gs_view-bsart,
+             gs_view-loekz,
+             gs_view-statu,
+             gs_view-aedat,
+             gs_view-ernam,
+             gs_view-lifnr,
+             gs_view-netwr.
+
+    at end of ebeln.
+      write sy-uline.
+      if p_soma is not initial.
+        format color 7.
+        read table gt_soma into gs_soma with table key ebeln = gs_view-ebeln.
+        if sy-subrc is initial.
+          write: / 'Montante total do pedido' , gs_soma-netwr.
+          write: / sy-uline.
+        endif.
+      endif.
+    endat.
+  endloop.
+  if p_soma is not initial.
+    write: / 'Total Geral:', gv_netwr.
+  endif.
+endform.

@@ -1,0 +1,143 @@
+﻿RS_PROGRAM_CHECK_NAME	To check program names if you are generating them.
+RS_CORR_INSERT			To insert the correction request in the repository.
+REPS_OBJECT_ACTIVATE	To activate repository objects, for example - to activate a newly generated program.
+RS_DELETE_PROGRAM		To delete the program.
+RS_ACCESS_PERMISSION	To lock or unlock a program.
+
+Function Modules for creating programs (Useful when you are generating programs)
+RS_PROGRAM_CHECK_NAME   To check program names if you are generating them.
+RS_CORR_INSERT			To insert the correction request in the repository.
+REPS_OBJECT_ACTIVATE	To activate repository objects, for example - to activate a newly generated program.
+RS_DELETE_PROGRAM		To delete the program.
+RS_ACCESS_PERMISSION	To lock or unlock a program.
+
+Function Modules related to Date and Time Calculations
+CALCULATE_DATE					Calculates the future date based on the input .
+DATE_TO_DAY						Returns the Day for the entered date. 
+DATE_COMPUTE_DAY				Returns weekday for a date
+DATE_GET_WEEK					Returns week for a date
+RP_CALC_DATE_IN_INTERVAL		Add days / months to a date
+DAY_ATTRIBUTES_GET				Returns attributes for a range of dates specified
+MONTHS_BETWEEN_TWO_DATES		To get the number of months between the two dates.
+END_OF_MONTH_DETERMINE_2		Determines the End of a Month.
+HR_HK_DIFF_BT_2_DATES			Find the difference between two dates in years, months and days.
+FIMA_DAYS_AND_MONTHS_AND_YEARS	Find the difference between two dates in years, months and days.
+MONTH_NAMES_GET					Get the names of the month
+WEEK_GET_FIRST_DAY				Get the first day of the week
+HRGPBS_HESA_DATE_FORMAT			Format the date in dd/mm/yyyy format
+SD_CALC_DURATION_FROM_DATETIME	Find the difference between two date/time and report the difference in hours
+L_MC_TIME_DIFFERENCE			Find the time difference between two date/time
+HR_99S_INTERVAL_BETWEEN_DATES	Difference between two dates in days, weeks, months
+LAST_DAY_OF_MONTHS				Returns the last day of the month
+DATE_CHECK_PLAUSIBILITY			Check for the invalid date.
+DATE_2D_TO_4D_CONVERSION		Year entry: 2-character to  4-character.
+DAY_IN_WEEK						Input date and will give the name of the day 1-monday,2-Tuesday....
+SD_DATETIME_DIFFERENCE			Give the difference in Days and Time for 2 dates
+
+Holidays and Factory Calendar
+HOLIDAY_GET						Gives holidays for a country.It has two flags Freeday(for weekends)and Holiday(for public holidays).
+FACTORYDATE_CONVERT_TO_DATE		returns the calendar date for the factory date and the factory calendar passed
+DATE_CONVERT_TO_FACTORYDATE		returns the factory date for the date and factory calendar passed
+
+Popup for dates
+F4_DATE							Displays a popup dialog to choose date
+POPUP_TO_SELECT_MONTH			Display a pop-up to select a month
+
+Function Modules related to (ALV)   SAP LIST VIEWER
+REUSE_ALV_LIST_DISPLAY	ABAP 	List viewer  (LIST DISPLAY)
+REUSE_ALV_GRID_DISPLAY	ALV 	GridControl full screen
+REUSE_ALV_FIELDCATALOG_MERGE	Create field catalog from dictionary structure or internal table
+
+Function Module related to Change Tracking
+CHANGEDOCUMENT_READ_HEADERS		Read and format change documents
+CHANGEDOCUMENT_READ				read change document headers and items to get the old and new values
+
+Function Modules Related To Formatting
+CLOI_PUT_SIGN_IN_FRONT			Displays the negative sign in front of the numeral
+RKD_WORD_WRAP					Wrap text into several lines
+CONVERSION_EXIT_ALPHA_INPUT		Pad zeros to the number at the left
+CONVERSION_EXIT_ALPHA_OUTPUT	Eliminate zeros to the number at the left
+READ_EXCHANGE_RATE				Exchange Convertion
+SPELL_AMOUNT					Transforms numeric values into text
+
+Function Modules Related To Dialog Prompts
+POPUP_TO_CONFIRM				Displays a popup dialog with a user defined message for confirmation
+POPUP_TO_GET_VALUE				Displays a popup dialog requesting a value for a particular table-fieldname
+SAPGUI_PROGRESS_INDICATOR		Displays a progress bar with text to denote the percentage of completion and status
+FILENAME_GET					Displays a popup dialog to get the presentation server filename
+F4_DATE							Displays a popup dialog to choose date
+POPUP_TO_SELECT_MONTH			Display a pop-up to select a month
+GET_PRINT_PARAMETERS			Printer parameters
+F4IF_INT_TABLE_VALUE_REQUEST	F4 help also returning the value to be displayed in internal table
+F4IF_FIELD_VALUE_REQUEST		F4 help for fields that are only known at runtime
+
+Function modules related to RFC communication
+RFC_CONNECTION_CLOSE			Close a RFC connection
+RFC_GET_SYSTEM_INFO				Give system's information of a remote system
+
+{+}Function modules related to reading/writing files on application server (named AS below) or Frontend +
+FILE_READ_AND_CONVERT_SAP_DATA	Uploads the file from either presentation or application server into an internal table
+SUBST_GET_FILE_LIST				To get the list of files from AS
+ALSM_EXCEL_TO_INTERNAL_TABLE	Legacy Data Transfer w/ Excel
+WS_FILE_DELETE					Delete files on AS server
+PFL_COPY_OS_FILE				Copy AS files
+EPS_GET_DIRECTORY_LISTING		Returns all files from an AS directory
+FILENAME_GET					Displays a popup dialog to get an AS filename (FILE transaction)
+GUI_UPLOAD						Upload a file from the presentation server
+GUI_DOWNLOAD					Downloads an Internal Table to the PC
+
+Function Modules related to sending emails
+SO_NEW_DOCUMENT_ATT_SEND_API1	Sends emails with texts and attachments
+SO_NEW_DOCUMENT_SEND_API1		Sends emails with texts.
+ 
+Function Module to execute unauthorized transactions 
+TRANSACTION_CALL_VIA_RFC	To execute some unauthorized transactions.
+
+Function Modules related to data maintenance
+VIEW_MAINTENANCE_CALL	To maintain data from a table or view (SM30)
+
+Amount and Currency
+CURRENCY_AMOUNT_SAP_TO_IDOC		Convert currency to IDOC format
+CLOI_PUT_SIGN_IN_FRONT			Move the negative sign from the left hand side of a number, to the right hand side of the number. Note that The result will be left justified (like all character fields), not right justifed as numbers normally are.
+CONVERT_TO_FOREIGN_CURRENCY		Convert local currency to foreign currency.
+CONVERT_TO_LOCAL_CURRENCY		Convert from foreign currency to local currency
+CONVERT_AMOUNT_TO_CURRENCY		Convert an amount from a currency to another (exchange rate taken from database tables)
+CONVERT_CURRENCY_BY_RATE		Convert an amount from a currency to another, according to the passed exchange rate
+BAPI_CURRENCY_CONV_TO_EXTERNAL	Conversion of Currency Amounts into External Data Format
+BAPI_CURRENCY_CONV_TO_INTERNAL	Conversion of Currency Amounts into Internal Data Format
+CALCULATE_TAX_FROM_NET_AMOUNT	 
+SPELL_AMOUNT					to get Amount in words
+HR_IN_CHG_INR_WRDS				Changes INR amount to words.
+
+Function Modules related to FI, CO and SD Modules
+FOR_ALL_SKC1A					Account subtotal
+VC_I_GET_CONFIGURATION			Sales Purchase details configuration
+SD_PRINT_TERMS_OF_PAYMENT		Print terms for unique payment
+SD_PRINT_TERMS_OF_PAYMENT_SPLI	Print terms for some parcels payment
+J_1B_NF_DOCUMENT_READ			Read NF details
+J_1B_NF_VALUE_DETERMINATION		Read values from NF returned combined with J_1B_NF_DOCUMENT_READ using.
+
+Function Module related to HR-ABAP
+HR_MAINTAIN_MASTERDATA			This function module is used to maintain master data for employees and applicants.
+HR_READ_INFOTYPE				This function module reads the data records of an HR infotype that exist for employees and applicants.
+HR_INFOTYPE_OPERATION			This function module is used to maintain employees and applicants data.
+CU_READ_RGDIR					This function module is used to read RGDIR of cluster CU.
+PYXX_READ_PAYROLL_RESULT		This function module reads complete payroll result for all country versions, from file PCL2 cluster.
+HR_GET_PAYROLL_RESULTS			This function module is used to fetch the payroll results for employees .
+HR_RELATION_MAINTAIN			This function module is to maintain the relation between employee and position.
+BAPI_HRMASTER_SAVE_REPL_MULT	This function module is to create position or organizaion unit ect.
+
+De <https://wiki.scn.sap.com/wiki/display/ABAP/Useful+ABAP+Function+Modules> 
+
+CONVERSION_EXIT_ALPHA_INPUT	converts any number into a string fill with zeroes, with the number at the extreme right
+
+De <https://wiki.scn.sap.com/wiki/display/ABAP/List+of+Commonly+Used+Function+Modules> 
+
+
+CONVERSION_EXIT_ALPHA_OUTPUT
+
+converts any number with zeroes right into a simple integer
+
+CONVERT_ABAPSPOOLJOB_2_PDF
+
+convert abap spool output to PD

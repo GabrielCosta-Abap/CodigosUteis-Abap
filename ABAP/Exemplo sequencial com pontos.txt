@@ -1,0 +1,33 @@
+  METHOD adiciona_sequencial.
+
+    DATA lt_hier TYPE TABLE OF ty_hier.
+    DATA ls_relat_ant LIKE LINE OF lt_relat.
+
+    LOOP AT lt_relat ASSIGNING FIELD-SYMBOL(<ls_relat>).
+      READ TABLE lt_hier INTO DATA(ls_hier) WITH KEY id = <ls_relat>-seqnr.
+      IF sy-subrc = 0.
+        <ls_relat>-seq = ls_hier-seqnr.
+        CONTINUE.
+      ENDIF.
+
+      IF <ls_relat>-seqnr = '1'.
+
+        <ls_relat>-seq = '1'.
+        APPEND VALUE #( id = <ls_relat>-seqnr
+                        seqnr = '1' ) TO lt_hier.
+      ELSE.
+
+        READ TABLE lt_hier ASSIGNING FIELD-SYMBOL(<ls_hier>) WITH KEY id = <ls_relat>-pup.
+        IF sy-subrc = 0.
+          <ls_hier>-count = <ls_hier>-count + 1.
+          <ls_relat>-seq = |{ <ls_hier>-seqnr }.{ <ls_hier>-count }|.
+
+          APPEND VALUE #( id = <ls_relat>-seqnr
+                          seqnr = <ls_relat>-seq ) TO lt_hier.
+        ENDIF.
+
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.

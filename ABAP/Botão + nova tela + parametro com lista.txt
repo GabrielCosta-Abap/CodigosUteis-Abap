@@ -1,0 +1,63 @@
+*--------------------------------------------------------------------*
+* BOTÃO + NOVA TELA + PARÂMETRO COM LISTA
+*--------------------------------------------------------------------*
+
+* Vamos começar a nos divertir hehe :D
+* Ah, e boa parte dessas coisas você vê no HELP (F1).
+*----------------------------------------------
+
+*selection-screen begin of block bl01 with frame.
+*
+**------> Pular Linhas
+*parameter: p_pula  type char10.
+*selection-screen skip 1. "Podem ser X linhas
+*parameter: p_pulou type char10.
+*selection-screen skip 2.
+*
+**-------> Comentário
+*selection-screen comment /1(50) comment.
+*selection-screen skip 1.
+*
+**-------> Botão para apertar (apertar = clicar hehe)
+*selection-screen  pushbutton /2(13) botao user-command click.
+*selection-screen skip 1.
+*
+**-------> Linha Horizontal
+*selection-screen uline. "mesmo esquema do WRITE
+*selection-screen skip 1.
+*
+**-------> ListBox (ele puxa os valores do domínio)
+*parameters: p_listb   type mara-mtart
+*                      as listbox visible length 10.
+*
+*selection-screen end of block bl01.
+*
+**----------------------------------------------------------
+** Vou criar outra tela de seleção, igual a de cima!
+** Escrever tudo denovo? Pra que?
+*selection-screen begin of screen 9000 as window.
+*
+**-------> Incluir uma tela de seleção em outras
+*selection-screen include blocks bl01.
+** Dá pra fazer só com parameters ou só com select-options
+** aperte F1 no INCLUDE ali pra ver!
+*
+*selection-screen end of screen 9000.
+*
+**--------------------------------------
+*initialization.
+*
+** Texto do Comentário
+*  comment = 'Eu sou um comentário, duh'.
+** Texto do Botão
+*  botao = 'Click Me!'.
+*
+**--------------------------------------
+*at selection-screen.
+*
+** Clicou no botao!
+*  if sy-ucomm = 'CLICK'.
+**   E com isso, você pode chamar a mesma tela como pop-up X vezes
+**   (até o sap não aguentar e dar uns problemas malucos!).
+*    call selection-screen 9000 starting at 5 5.
+*  endif.

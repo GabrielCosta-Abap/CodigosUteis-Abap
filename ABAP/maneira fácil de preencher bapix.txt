@@ -1,0 +1,17 @@
+PARAMETERS pu_data(2) TYPE c.
+
+DATA: lo_idetails   TYPE abap_compdescr_tab,
+      lo_xdetails   TYPE abap_compdescr,
+      ref_table_des TYPE REF TO cl_abap_structdescr,
+      lv_nome(5)    TYPE c.
+
+ref_table_des ?= cl_abap_typedescr=>describe_by_name( 'FAGLFLEXT' ).
+lo_idetails = ref_table_des->components[].
+
+lv_nome =  'HSL' && pu_data .
+LOOP AT lo_idetails INTO lo_xdetails.
+  IF lo_xdetails-name = lv_nome.
+    WRITE 'true'.
+  ENDIF.
+
+ENDLOOP.

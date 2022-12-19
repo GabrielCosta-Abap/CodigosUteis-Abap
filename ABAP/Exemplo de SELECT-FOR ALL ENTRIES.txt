@@ -1,0 +1,44 @@
+select   mchb~matnr,
+           makt~maktx,
+           mchb~werks,
+           mchb~lgort,
+           mchb~charg,
+*           MCHB~licha,
+           mchb~clabs,
+           mara~meins,
+           mseg~ebeln,
+           mchb~ersda
+
+  from mchb
+  inner join makt
+  on ( mchb~matnr = makt~matnr )
+  left outer join mara
+  on ( mchb~matnr = mara~matnr )
+  left outer join mseg
+  on ( mchb~matnr = mseg~matnr and
+*       mchb~matnr = @mseg-matnr and
+*       mchb~werks = @mseg-werks and
+*       mchb~lgort = @mseg-lgort and
+       mchb~charg = @mseg-charg )
+       into corresponding fields of table @gt_join
+
+  where  ( mchb~matnr in @so_matnr
+    and    mchb~werks in @so_werks
+    and    mchb~lgort in @so_lgort
+    and    mseg~lifnr eq 0 ).
+
+  if gt_join is not initial.
+
+    select matnr
+           werks
+           lgort
+           charg
+           ebeln
+      into table gt_mseg
+    from mseg for all entries in gt_join
+    where ( mjahr eq gt_join-ersda(4)
+*      and matnr eq gt_join-matnr
+*      and werks eq gt_join-werks
+*      and lgort eq gt_join-lgort
+*      and charg eq gt_join-charg
+      and lifnr ne ' ' ).

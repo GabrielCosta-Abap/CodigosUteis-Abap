@@ -1,0 +1,11 @@
+
+  p_nome = |%| && p_nome && |%|.
+*  p_nome = p_nome && '%'.
+*  concatenate p_nome  '%' into p_nome.
+
+
+  select *
+    from ztbgabriel001
+    into table gt_gabriel
+    where nome like p_nome
+    and    ano  in p_ano.

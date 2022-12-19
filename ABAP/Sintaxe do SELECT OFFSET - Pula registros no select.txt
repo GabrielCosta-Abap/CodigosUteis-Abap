@@ -1,0 +1,9 @@
+SELECT *
+    FROM
+      mara
+    ORDER BY
+      matnr
+    INTO TABLE
+      @itab
+    OFFSET 20
+    UP TO 10 ROWS

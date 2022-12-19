@@ -1,0 +1,11 @@
+LOOP AT SCREEN.
+
+  IF screen-name = 'NOMEDOCAMPO'.
+    screen-input = 0.
+    MODIFY SCREEN.
+  ENDIF.
+
+ENDLOOP.
+
+" 0 desabilita
+" 1 habilita

@@ -1,0 +1,4 @@
+
+colocar na View:
+ 
+class="sapUiSizeCompact"

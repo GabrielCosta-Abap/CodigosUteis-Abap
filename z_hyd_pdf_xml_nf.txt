@@ -1,0 +1,311 @@
+FUNCTION z_hyd_pdf_xml_nf.
+*"----------------------------------------------------------------------
+*"*"Interface local:
+*"  IMPORTING
+*"     VALUE(INPUT) TYPE  ZDT_INVOICE_DOCUMENTS_REQ
+*"  EXPORTING
+*"     REFERENCE(OUTPUT) TYPE  ZDT_INVOICE_DOCUMENTS_RESP
+*"----------------------------------------------------------------------
+
+
+  DATA: lv_docnum      TYPE j_1bdocnum,
+        lv_inco1       TYPE inco1,
+        lv_again       TYPE na_repeat,
+        lv_nfenum      TYPE j_1bnfnum9,
+        lv_parid       TYPE j_1bparid,
+        lv_dest        TYPE tvarv_val,
+        lv_rfcdest     TYPE rfcdest,
+        lv_chvnfe      TYPE zlese_chvnfe,
+        ls_active      TYPE j_1bnfe_active,
+        ls_acckey      TYPE j_1b_nfe_access_key,
+        lv_direction   TYPE j_1b_nfe_direction,
+        lv_doctype     TYPE j_1b_nfe_doctype,
+        lv_rfc         TYPE rfcdest,
+        lv_exp_nfe_num TYPE j_1bnfdoc-nfenum,
+        lv_xml_key     TYPE j_1b_nfe_access_key_dtel44,
+        lv_xml_content TYPE j_1b_nfe_xml_content,
+        lv_xml_base64  TYPE string,
+        lv_pdf_normal  TYPE xstring,
+        lv_docentrad   TYPE j_1bnfdoc-entrad,
+        lt_messages    TYPE bapirettab.
+
+  DATA lo_dom        TYPE REF TO if_ixml_document.
+  DATA w_string      TYPE xstring.
+  DATA w_size        TYPE i.
+  DATA it_xml        TYPE dcxmllines.
+  DATA gt_pdf        TYPE TABLE OF blob.
+  DATA data_tab      TYPE TABLE OF x255.
+
+  CONSTANTS lc_model_nfe    TYPE j_1b_nfe_doctype VALUE 'NFE'.
+  CONSTANTS lc_model_cte    TYPE j_1b_nfe_doctype VALUE 'CTE'.
+  CONSTANTS lc_direct_in    TYPE j_1b_nfe_direction VALUE 'INBD'.
+  CONSTANTS lc_direct_out   TYPE j_1b_nfe_direction VALUE 'OUTB'.
+  CONSTANTS lc_file_type    TYPE char10 VALUE 'BIN'.
+  CONSTANTS lc_window_title TYPE string VALUE 'Save XML As...'.
+
+
+  "   Dialog and file properties
+  DATA lv_file_filter      TYPE string.
+  DATA lv_file_filter_edmx TYPE string.
+  DATA lv_file_name        TYPE string.
+  DATA lv_def_file_name    TYPE string.
+  DATA lv_path             TYPE string.
+  DATA lv_fullpath         TYPE string.
+  DATA lv_size             TYPE i.
+
+
+  IF input IS INITIAL.
+    "Parametro obrigatorio não definido
+    PERFORM set_error USING 'ZSD' 207 '' '' '' ''
+          CHANGING output-errors.
+    EXIT.
+  ENDIF.
+
+
+  "pegar destinations para acesso ao grc
+  PERFORM f_pega_tvarv USING space
+                       'ZNFEDESTINATION_GRC'
+                       CHANGING  lv_dest.
+  lv_rfcdest    = lv_dest.
+
+
+  lv_parid    = |{ input-customer_debt_collector_id   ALPHA = IN }|.
+  lv_nfenum   = |{ input-invoice_number               ALPHA = IN }|.
+
+  SELECT SINGLE docnum inco1 INTO (lv_docnum, lv_inco1)
+         FROM j_1bnfdoc
+         WHERE parid  = lv_parid
+           AND nfenum = lv_nfenum.
+  IF sy-subrc IS NOT INITIAL.
+    "Dados não encontrados
+    PERFORM set_error USING 'ZSD' 205 '' '' '' ''
+          CHANGING output-errors.
+    EXIT.
+  ENDIF.
+
+  IF  input-get_xml = abap_false AND input-get_pdf = abap_false.
+    "Parametro obrigatorio não definido
+    PERFORM set_error USING 'ZSD' 207 'get_xml' 'get_pdf' '' ''
+          CHANGING output-errors.
+    EXIT.
+  ENDIF.
+
+  "move linha para saida - retorno
+  CLEAR: output-documents-invoice_xmlbase64, output-documents-invoice_pdfbase64.
+
+  SELECT SINGLE * FROM  j_1bnfe_active
+         INTO ls_active
+         WHERE docnum = lv_docnum.
+  IF sy-subrc IS NOT INITIAL.
+    "Dados não encontrados
+    PERFORM set_error USING 'ZSD' 205 '' '' '' ''
+          CHANGING output-errors.
+    EXIT.
+  ENDIF.
+
+
+  output-documents-customer_debt_collector_id    = lv_parid.
+  output-documents-invoice_number                = ls_active-nfnum9.
+
+  MOVE-CORRESPONDING ls_active TO ls_acckey .
+
+
+
+**** XML
+  IF input-get_xml = abap_true.
+
+    " If connection was found
+    IF lv_rfcdest IS NOT INITIAL.
+
+      " Map the key to the proper structure
+      lv_xml_key = ls_acckey.
+
+      "   Check the nf type
+      CASE ls_active-model.
+        WHEN 55.
+          lv_doctype = lc_model_nfe.
+        WHEN 57.
+          lv_doctype = lc_model_cte.
+      ENDCASE.
+
+      "   Check the direction
+      CASE ls_active-direct.
+        WHEN '1'.
+          " Check if flaged as 'entrada' and
+          " chage direction if needed
+          SELECT SINGLE entrad                              "2176338
+            FROM j_1bnfdoc                                  "2176338
+            INTO lv_docentrad                               "2176338
+            WHERE docnum = ls_active-docnum.                "2176338
+          IF lv_docentrad = abap_true.                      "2176338
+            lv_direction = lc_direct_out.                   "2176338
+          ELSE.                                             "2176338
+            lv_direction = lc_direct_in.                    "2176338
+          ENDIF.                                            "2176338
+        WHEN '2'.
+          lv_direction = lc_direct_out.
+      ENDCASE.
+
+      PERFORM zf_load_xml_content  USING lv_direction
+                                         lv_doctype
+                                         lv_xml_key
+                                         lv_rfcdest
+                              CHANGING lv_xml_content
+                                       lt_messages.
+
+      IF lv_xml_content IS NOT INITIAL.
+
+        CALL FUNCTION 'SSFC_BASE64_ENCODE'
+          EXPORTING
+            bindata = lv_xml_content "xstring
+          IMPORTING
+            b64data = lv_xml_base64  "string
+          EXCEPTIONS
+            OTHERS  = 1. " Over simplifying exception handling
+
+        "------------------------------------------
+        "Move xml para estrutura de saida - retorno
+        output-documents-invoice_xmlbase64 = lv_xml_base64 ."lv_xml_content.
+        "------------------------------------------
+
+      ELSE.
+*        "Dados não encontrados
+*        PERFORM set_error USING 'ZSD' 205 '' '' '' ''
+*              CHANGING output-errors.
+*        EXIT.
+      ENDIF.
+
+    ENDIF.
+
+  ENDIF."IF input->get_xml = abap_true.
+
+**** PDF
+  IF input-get_pdf = abap_true.
+
+    "Move xstring do pdf para estrutura de saida - retorno
+    lv_again = abap_true.
+    PERFORM f_gera_danfe USING lv_docnum
+                               lv_inco1
+                               lv_again
+                         CHANGING lv_pdf_normal
+                                  output-documents-invoice_pdfbase64.
+    IF output-documents-invoice_pdfbase64 IS INITIAL.
+      lv_again = ' '.
+      PERFORM f_gera_danfe USING lv_docnum
+                               lv_inco1
+                               lv_again
+                         CHANGING lv_pdf_normal
+                                  output-documents-invoice_pdfbase64.
+      IF output-documents-invoice_pdfbase64 IS INITIAL.
+        "Dados não encontrados
+        PERFORM set_error USING 'ZSD' 205 '' '' '' ''
+              CHANGING output-errors.
+        EXIT.
+      ENDIF.
+    ENDIF.
+
+  ENDIF."IF input->get_pdf = abap_true.
+
+
+  EXIT. "fim da função
+
+  "------------------------------------------------------------------------------------
+  "Atenção:
+  "Para uso eventual checagem se gerou dados: faz download
+  DATA: lv_download(1).
+  IF lv_download = abap_true.
+
+    "Se xml contiver dados
+    IF output-documents-invoice_xmlbase64 IS NOT INITIAL.
+      "Xml
+      " Converts raw string content into DOM object
+      CALL FUNCTION 'SDIXML_XML_TO_DOM'
+        EXPORTING
+          xml           = lv_xml_content
+        IMPORTING
+          document      = lo_dom
+        EXCEPTIONS
+          invalid_input = 1
+          OTHERS        = 2.
+
+      " Convert DOM to XML doc (table)
+      CALL FUNCTION 'SDIXML_DOM_TO_XML'
+        EXPORTING
+          document      = lo_dom
+          pretty_print  = ' '
+        IMPORTING
+          xml_as_string = w_string
+          size          = w_size
+        TABLES
+          xml_as_table  = it_xml
+        EXCEPTIONS
+          no_document   = 1
+          OTHERS        = 2.
+
+      " Set up the file extension filter for the dialog
+      " Exclude cl_gui_frontend_services=>filetype_all
+      lv_file_filter_edmx = cl_gui_frontend_services=>filetype_xml.
+      REPLACE ALL OCCURRENCES OF 'XML' IN lv_file_filter_edmx WITH 'EDMX' RESPECTING CASE.
+      REPLACE ALL OCCURRENCES OF 'xml' IN lv_file_filter_edmx WITH 'edmx' RESPECTING CASE.
+      IF cl_gui_frontend_services=>filetype_xml NE lv_file_filter_edmx.
+        CONCATENATE cl_gui_frontend_services=>filetype_xml lv_file_filter_edmx '|' INTO lv_file_filter.
+      ELSE.
+        CONCATENATE cl_gui_frontend_services=>filetype_xml '|' INTO lv_file_filter.
+      ENDIF.
+
+      lv_def_file_name =  lv_xml_key.
+
+      CONCATENATE 'C:\TEMP\' 'XML_' output-documents-invoice_number '.XML' INTO lv_file_name.
+
+      " Download xml to the selected destination
+      cl_gui_frontend_services=>gui_download(
+        EXPORTING
+          filename     = lv_file_name
+          bin_filesize = lv_size
+          filetype     = lc_file_type
+        CHANGING
+          data_tab     = it_xml
+        EXCEPTIONS
+          file_write_error = 1
+          no_authority = 5
+          unknown_error = 6
+          access_denied = 15
+          OTHERS = 24 ).
+
+    ENDIF.
+
+    "Se pdf contiver dados
+    IF output-documents-invoice_pdfbase64 IS NOT INITIAL.
+
+      CONCATENATE 'C:\TEMP\' 'DANFE_' output-documents-invoice_number '.PDF' INTO lv_file_name.
+
+***converting xstring to the binary format
+      "pdf
+      CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+        EXPORTING
+          buffer     = lv_pdf_normal
+        TABLES
+          binary_tab = data_tab.
+
+      "Faz download
+      cl_gui_frontend_services=>gui_download(
+         EXPORTING
+           filename = lv_file_name
+           filetype = 'BIN'
+         CHANGING
+           data_tab = data_tab ).
+
+      "Mostra na tela
+      cl_gui_frontend_services=>execute(
+         EXPORTING
+           document = lv_file_name ).
+
+    ENDIF.
+
+
+  ENDIF. "IF download = abap_true.
+
+
+
+
+ENDFUNCTION.

@@ -1,0 +1,15 @@
+  data(ls_variant) = value disvariant( report = sy-repid ).
+
+  data(ls_layo) = value lvc_s_layo( cwidth_opt = 'A'
+                                    zebra      = 'X'
+                                    sel_mode   = 'B' ).
+
+  data(lt_sort) = value lvc_t_sort( ( fieldname = 'WRBTR' ) "   up = 'X' subtot = 'X' )
+                                    ( fieldname = 'ZVLDESC' )" up = 'X' subtot = 'X' )
+                                    ( fieldname = 'ZVLDISP' ) ). " up = 'X' subtot = 'X' ) ).
+
+  data(lt_fcat) = value lvc_t_fcat( "( fieldname = 'WRBTR'   do_sum = 'X' col_opt = 'X' )
+                                    ( fieldname = 'ZVLDESC' do_sum = 'X' col_opt = 'X' )
+                                    ( fieldname = 'ZVLDESC' do_sum = 'X' col_opt = 'X' )
+                                    ( fieldname = 'ZVLDISP' do_sum = 'X' col_opt = 'X' )
+                                    ( fieldname = 'XBLNR'   coltext = 'Número do doc' ) ).

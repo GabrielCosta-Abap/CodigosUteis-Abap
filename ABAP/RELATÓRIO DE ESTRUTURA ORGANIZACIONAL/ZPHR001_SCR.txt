@@ -1,0 +1,33 @@
+
+DATA g_variant TYPE disvariant.
+DATA g_layout  TYPE REF TO cl_salv_layout..
+DATA g_exit TYPE c.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+PARAMETERS:
+  p_pres RADIOBUTTON GROUP gr1,
+  p_ge   RADIOBUTTON GROUP gr1,
+  p_gt   RADIOBUTTON GROUP gr1.
+SELECTION-SCREEN END OF BLOCK b1.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE text-003.
+PARAMETERS p_lay TYPE slis_vari.
+SELECTION-SCREEN END OF BLOCK b2.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_lay.
+
+  g_variant-report = sy-cprog.
+  CALL FUNCTION 'REUSE_ALV_VARIANT_F4'
+    EXPORTING
+      is_variant    = g_variant
+      i_save        = 'A'
+    IMPORTING
+      e_exit        = g_exit
+      es_variant    = g_variant
+    EXCEPTIONS
+      not_found     = 1
+      program_error = 2
+      OTHERS        = 3.
+  IF sy-subrc = 0.
+    p_lay    = g_variant-variant.
+  ENDIF.

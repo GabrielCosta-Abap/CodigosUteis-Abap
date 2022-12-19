@@ -1,0 +1,450 @@
+*&---------------------------------------------------------------------*
+*& Report ZPFIC001
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+report zpfic001.
+
+tables: bsik, bseg, ztbl_fi0002.
+
+*--Structure for up ALV.
+types:
+  begin of ty_upalv,
+    xblnr  type xblnr,
+    zdocf  type ze_fizdocf,
+    kunnr  type kunnr,
+    name1  type name1_gp,
+    bukrs  type bukrs,
+    gsber  type gsber,
+    belnr  type belnr_d,
+    buzei  type buzei,
+    gjahr  type gjahr,
+    netdt  type netdt,
+    wrbtr  type wrbtr,
+    waers  type waers,
+    bldat  type bldat,
+    laufd  type laufdt,
+    laufi  type laufi,
+    zempv  type bukrs,
+    zdocv  type belnr_d,
+    zitmv  type buzei,
+    zexecv type gjahr,
+    zrefdv type xblnr,
+    zrvinc type xblnr,
+    zcliev type kunnr,
+  end of ty_upalv.
+*
+**--Structure for down alv.
+types:
+  begin of ty_downalv,
+    xblnr   type xbelnr,
+    zdocf   type ze_fizdocf,
+    kunnr   type kunnr,
+    name1   type name1_gp,
+    bukrs   type bukrs,
+    gsber   type gsber,
+    belnr   type belnr_d,
+    buzei   type buzei,
+    gjahr   type gjahr,
+    bldat   type bldat,
+    netdt   type netdt,
+    wrbtr   type wrbtr,
+    waers   type waers,
+    zvldesc type ze_fizmdesc,
+    zmddesc type ze_fizmddesc,
+    zvldisp type ze_fizvldisp,
+    zmddisp type ze_fizmddisp,
+    zstvinc type ze_fizsvinc,
+  end of ty_downalv.
+
+*--Verification tab for F110.
+data it_reguta type table of reguta.
+
+*--UP alv tab
+data: it_upalv type table of ty_upalv,
+      wa_upalv like line of it_upalv.
+
+*--DOWN alv tab
+data:it_downalv type table of ty_downalv,
+     wa_downalv like line of it_downalv.
+
+*--ALV Objects.
+data: go_alv  type ref to cl_gui_alv_grid,
+      go_alv2 type ref to cl_gui_alv_grid.
+data: go_container     type ref to cl_gui_container,                        "Container para o ALV1
+      go_container_cab type ref to cl_gui_container,                        "Container para o ALV2
+      go_splitter      type ref to cl_gui_splitter_container.               "Divisão de tela - criação de container dinamicamente
+
+class lcl_event_receiver definition.
+
+  public section.
+    methods:
+      handle_toolbar for event toolbar of cl_gui_alv_grid
+        importing e_object e_interactive.
+
+    methods:
+      handle_user_command for event user_command of cl_gui_alv_grid
+        importing e_ucomm.
+
+    methods:
+      handle_toolbar2 for event toolbar of cl_gui_alv_grid
+        importing e_object e_interactive.
+
+endclass.
+
+class lcl_event_receiver implementation.
+
+  method handle_toolbar.
+    data: lv_toolbar type stb_button.
+    data: lv_toolbar2 type stb_button.
+
+* Push Button1
+    clear lv_toolbar.
+    move 'OTHER' to lv_toolbar-function.
+    move 'Press this button modafoca'(100) to lv_toolbar-text.
+    move 'Got it motherfucker'(100) to lv_toolbar-quickinfo.
+    move ' ' to lv_toolbar-disabled.
+    append lv_toolbar to e_object->mt_toolbar.
+  endmethod.
+
+  method handle_toolbar2.
+    data: lv_toolbar2 type stb_button.
+
+* Push Button2
+    clear lv_toolbar2.
+    move 'FBL1N' to lv_toolbar2-function.
+    move 'Press this other button modafoca'(100) to lv_toolbar2-text.
+    move 'Make it works'(100) to lv_toolbar2-quickinfo.
+    move ' ' to lv_toolbar2-disabled.
+    append lv_toolbar2 to e_object->mt_toolbar.
+  endmethod.
+
+* fazendo a porra do botão funcionar
+  method handle_user_command.
+    perform handle_user_command using e_ucomm.
+  endmethod.
+endclass.
+
+*--Block for up ALV selection
+selection-screen begin of block b1 with frame title text-001.
+parameters p_laufd type laufd obligatory.
+parameters p_laufi type laufi obligatory.
+selection-screen end of block b1.
+
+*--Block for down ALV selection
+selection-screen begin of block b2 with frame title text-002.
+select-options so_belnr for bsik-belnr.
+select-options so_bukrs for bsik-bukrs.
+select-options so_buzei for bsik-buzei.
+select-options so_gjahr for bsik-gjahr.
+select-options so_kunnr for bseg-kunnr.
+select-options so_xblnr for bsik-xblnr.
+selection-screen end of block b2.
+
+start-of-selection.
+
+  call screen 100.
+
+end-of-selection.
+
+form select_data.
+
+*--Seleção para verificação de dados da F110.
+  select *
+    from reguta inner join ztbl_fi0002 on ( reguta~dtkey = ztbl_fi0002~hbkid )
+    into corresponding fields of table @it_reguta
+    where laufd eq @p_laufd
+      and laufi eq @p_laufi
+      and xvorl = @space.
+
+  select *
+    from bsik inner join bseg
+    on ( bsik~bukrs = bseg~bukrs
+    and   bsik~ebeln = bseg~ebeln
+    and   bsik~gjahr = bseg~gjahr )
+    into corresponding fields of table it_upalv.
+
+  select xblnr
+*        zdocf
+*         kunnr
+*         name1
+         bukrs
+         gsber
+         belnr
+         buzei
+         gjahr
+         bldat
+*         netdt
+         wrbtr
+         waers
+*         b~zvldesc
+*         b~zmddesc
+*         b~zvldisp
+*         b~zmddisp
+*         b~zstvinc
+    from bsik
+  into corresponding fields of table it_downalv.
+
+endform.
+
+form check_f110_data.
+
+  if it_reguta is initial.
+*    message s398(000) with 'Arquivo de cobrança para' p_laufd p_laufi 'Não encontrado'  display like 'E'.
+  else.
+    perform f_sapgui_progress_indicator using 'Verificando dados...'.
+  endif.
+
+endform.
+
+form f_sapgui_progress_indicator using pv_text.
+  call function 'SAPGUI_PROGRESS_INDICATOR'
+    exporting
+      percentage = 0
+      text       = pv_text.
+endform.
+
+form splitter_creation.
+
+  if go_splitter is initial.
+
+    "Cria o objeto Split Container para inserir o ALV, utilizando duas linhas
+    create object go_splitter
+      exporting
+        parent  = cl_gui_container=>default_screen
+        rows    = 2
+        columns = 1
+        metric  = '0001'.
+
+    "Define o tamanho da linha 1
+    call method go_splitter->set_row_height
+      exporting
+        id                = 1
+        height            = 13
+      exceptions
+        cntl_error        = 1
+        cntl_system_error = 2
+        others            = 3.
+
+    "Define o tamanho da linha 2
+    call method go_splitter->set_row_height
+      exporting
+        id                = 2
+        height            = 13
+      exceptions
+        cntl_error        = 1
+        cntl_system_error = 2
+        others            = 3.
+
+  endif.
+
+  go_container         = go_splitter->get_container( row = 1 column = 1 ).
+  go_container_cab     = go_splitter->get_container( row = 2 column = 1 ).
+
+endform.
+
+**********ALV DE CIMA******************************************************************************************
+form display_alv.
+
+  data(ls_layo) = value lvc_s_layo( cwidth_opt = 'A'
+                                    zebra      = abap_true
+                                    sel_mode   = 'A' ).
+
+  data(ls_sort) = value lvc_s_sort( fieldname = 'WRBTR'
+                                    up        = 'X'
+                                    subtot    = 'X'  ).
+
+  data(ls_fcat) = value lvc_s_fcat( fieldname = 'WRBTR'
+                                    do_sum    = 'X'
+                                    col_opt   = 'X'  ).
+
+  data lt_fcat type lvc_t_fcat.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  data it_sort type lvc_t_sort.
+  append ls_sort to it_sort.
+  clear it_sort.
+
+  data: ls_variant type disvariant.
+
+  ls_variant-report = sy-repid.
+
+  if go_alv is initial.
+
+    go_alv = new #( i_parent = go_container ).
+
+    data: gv_event_receiver type ref to lcl_event_receiver.
+
+    create object gv_event_receiver.
+
+* Event Handler
+    set handler gv_event_receiver->handle_toolbar for go_alv.
+
+    go_alv->set_table_for_first_display(
+      exporting
+          i_structure_name              = 'ZSTUPALV'
+          i_save                        = 'A'
+          is_layout                     = ls_layo
+          is_variant                    = ls_variant
+      changing
+          it_outtab                     = it_upalv
+          it_fieldcatalog               = lt_fcat
+          it_sort                       = it_sort
+    exceptions
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        others                        = 4
+  ).
+
+    if sy-subrc <> 0.
+      message id sy-msgid type 'E' number sy-msgno with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    endif.
+
+  endif.
+  data:et_index_rows type lvc_t_row,
+       et_row_no     type lvc_t_roid,
+       wa_et_row_no  like line of et_row_no,
+       n             type i,
+       row_id        type i.
+
+  go_alv->get_selected_rows(
+    importing
+      et_index_rows = et_index_rows
+      et_row_no     = et_row_no
+ ).
+
+  describe table et_index_rows lines n.
+
+
+
+
+  data gr_event_handler type ref to lcl_event_receiver.
+  create object gr_event_handler .
+
+* Registrando os eventos
+*  set handler gr_event_handler->handle_toolbar for go_alv.
+*  set handler gr_event_handler->handle_toolbar2 for go_alv.
+  set handler gr_event_handler->handle_user_command for go_alv.
+
+  call method go_alv->set_toolbar_interactive .
+
+endform."**ALV DE CIMA******************************************************************************************
+
+***********ALV DE BAIXO*****************************************************************************************
+form display_alv2.
+
+
+  data(ls_layo) = value lvc_s_layo( cwidth_opt = 'A'
+                                    zebra      = abap_true
+                                    sel_mode   = 'B' ).
+
+  data(ls_sort) = value lvc_s_sort( fieldname = 'WRBTR'
+                                    up        = 'X'
+                                    subtot    = 'X'  ).
+  data it_sort type lvc_t_sort.
+  append ls_sort to it_sort.
+  clear it_sort.
+
+  ls_sort-fieldname = 'ZVLDESC'.
+  ls_sort-up        = 'X'.
+  ls_sort-subtot    = 'X'.
+  append ls_sort to it_sort.
+  clear it_sort.
+
+  ls_sort-fieldname = 'ZVLDISP'.
+  ls_sort-up        = 'X'.
+  ls_sort-subtot    = 'X'.
+  append ls_sort to it_sort.
+  clear it_sort.
+
+  data(ls_fcat) = value lvc_s_fcat( fieldname = 'WRBTR'
+                                    do_sum    = 'X'
+                                    col_opt   = 'X' ).
+  data lt_fcat type lvc_t_fcat.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'ZVLDESC'.
+  ls_fcat-do_sum    = 'X'.
+  ls_fcat-col_opt   = 'X'.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'ZVLDISP '.
+  ls_fcat-do_sum    = 'X'.
+  ls_fcat-col_opt   = 'X'.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  data: ls_variant type disvariant.
+
+  ls_variant-report = sy-repid.
+
+
+  if go_alv2 is initial.
+
+    go_alv2 = new #( i_parent = go_container_cab ).
+
+    data: gv_event_receiver type ref to lcl_event_receiver.
+
+    create object gv_event_receiver.
+
+* Event Handler
+    set handler gv_event_receiver->handle_toolbar2 for go_alv2.
+
+    go_alv2->set_table_for_first_display(
+      exporting
+          i_structure_name              = 'ZSTDOWNALV'
+          i_save                        = 'A'
+          is_layout                     = ls_layo
+          is_variant                    = ls_variant
+      changing
+          it_outtab                     = it_downalv
+          it_fieldcatalog               = lt_fcat
+          it_sort                       = it_sort
+    exceptions
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        others                        = 4
+  ).
+    if sy-subrc <> 0.
+      message id sy-msgid type 'E' number sy-msgno with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    endif.
+  endif.
+endform."*******ALV DE BAIXO**************************************************************************************
+
+form handle_user_command using i_ucomm.
+
+  case i_ucomm.
+    when 'OTHER'.
+      cl_demo_output=>display( 'Oi meu chapa!' ).
+
+  endcase.
+endform.
+module status_0100 output.
+  set pf-status 'STATUS100'.
+  set titlebar 'TIT100'.
+  perform select_data.
+  perform check_f110_data.
+  perform splitter_creation.
+  perform display_alv.
+  perform display_alv2.
+endmodule.
+
+module user_command_0100 input.
+
+  case sy-ucomm.
+    when 'BACK'.
+      leave to screen 0.
+    when 'CANCEL'.
+      set screen 0.
+    when 'EXIT'.
+      leave screen.
+    when 'OTHER'.
+      leave program.
+  endcase.
+
+endmodule.

@@ -1,0 +1,282 @@
+*&---------------------------------------------------------------------*
+*& Report ZPGABRIEL001
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zpgabriel001.
+
+*--------------------------------------------------------------------*
+*TABELA INTERNA
+*--------------------------------------------------------------------*
+DATA gt_gabriel001 TYPE TABLE OF ztbgabriel001.
+
+*--------------------------------------------------------------------*
+*ESTRUTURA
+*--------------------------------------------------------------------*
+DATA gs_gabriel001 TYPE ztbgabriel001.
+
+*--------------------------------------------------------------------*
+*Variáveis
+*--------------------------------------------------------------------*
+DATA: gv_tem_registro TYPE c LENGTH 1,
+      gv_contador     TYPE i.
+
+*--------------------------------------------------------------------*
+*Tela de seleção
+*--------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK acao    WITH FRAME TITLE TEXT-002.
+PARAMETERS p_inse RADIOBUTTON GROUP acao DEFAULT 'X' USER-COMMAND radio.
+PARAMETERS p_most RADIOBUTTON GROUP acao.
+SELECTION-SCREEN END OF BLOCK acao.
+
+SELECTION-SCREEN BEGIN OF BLOCK cadastro WITH FRAME TITLE TEXT-001.
+PARAMETERS p_nome TYPE ztbgabriel001-nome DEFAULT space MODIF ID gr1.
+PARAMETERS p_ano  TYPE ztbgabriel001-ano  MODIF ID gr1.
+SELECTION-SCREEN END OF BLOCK cadastro.
+
+SELECTION-SCREEN BEGIN OF BLOCK idade    WITH FRAME TITLE TEXT-003.
+PARAMETERS p_val1 TYPE i MODIF ID gr2.
+PARAMETERS p_val2 TYPE i MODIF ID gr2.
+SELECTION-SCREEN END OF BLOCK idade.
+
+*--------------------------------------------------------------------*
+* Criação da tela dinâmica
+*--------------------------------------------------------------------*
+AT SELECTION-SCREEN OUTPUT.
+  IF p_inse IS NOT INITIAL.
+    PERFORM f_muda_tela USING 'GR2' .
+  ELSE.
+    PERFORM f_muda_tela USING 'GR1' .
+  ENDIF.
+
+FORM f_muda_tela USING p_ins.
+  " Dá o loop em cada objeto da tela.
+  LOOP AT SCREEN.
+    IF screen-group1 = p_ins  AND NOT screen-group1 IS INITIAL.
+      screen-active = '0'.
+*      MODIFY SCREEN.
+    ELSE.
+      screen-active = '1'.
+*      MODIFY SCREEN.
+    ENDIF.
+    MODIFY SCREEN.
+  ENDLOOP.
+ENDFORM.
+
+*--------------------------------------------------------------------*
+*Lógica
+*--------------------------------------------------------------------*
+START-OF-SELECTION.
+*Movendo Parametros para as estruturas.
+  gs_gabriel001-nome = p_nome.
+  gs_gabriel001-ano  = p_ano.
+
+*Movendo estrutura para tabela interna.
+  APPEND gs_gabriel001 TO gt_gabriel001.
+
+*--------------------------------------------------------------------*
+*INSERIR NA TABELA
+*--------------------------------------------------------------------*
+  IF p_inse IS NOT INITIAL.
+    INSERT ztbgabriel001 FROM gs_gabriel001.
+    IF sy-subrc IS INITIAL.
+      MESSAGE 'Usuário cadastrado com sucesso' TYPE 'I' DISPLAY LIKE 'S'.
+    ELSE.
+      MESSAGE 'Este usuário já foi inserido' TYPE 'I' DISPLAY LIKE 'E'.
+    ENDIF.
+  ENDIF.
+  CLEAR: p_nome,
+         p_ano.
+*--------------------------------------------------------------------*
+* MOSTRAR RELATÓRIO - COM ENDSELECT e SUB-ROTINAS.
+*--------------------------------------------------------------------*
+  IF p_most IS NOT INITIAL.
+    CLEAR: gv_tem_registro, gv_contador.
+    SELECT *
+    FROM ztbgabriel001
+    INTO gs_gabriel001.
+      IF gs_gabriel001-ano >= p_val1 AND gs_gabriel001-ano <= p_val2.
+        gv_tem_registro = abap_true.
+      ENDIF.
+      PERFORM f_mostrar_relatorio USING p_val1 p_val2.
+    ENDSELECT.
+    PERFORM f_erro              USING p_val1 p_val2.
+  ENDIF.
+
+*--------------------------------------------------------------------*
+*FORMS
+*--------------------------------------------------------------------*
+FORM f_mostrar_relatorio USING p_val1 TYPE any
+                               p_val2 TYPE any.
+  IF gs_gabriel001-ano >= p_val1 AND gs_gabriel001-ano <= p_val2.
+    gv_tem_registro = abap_true.
+    IF gv_tem_registro = abap_true.
+      ADD 1 TO gv_contador.
+      WRITE:  'Nome:',gs_gabriel001-nome.
+      WRITE:/ 'Ano:',gs_gabriel001-ano.
+      WRITE / '-----------------------------'.
+      WRITE /.
+    ENDIF.
+  ENDIF.
+ENDFORM.
+
+FORM f_erro              USING p_val1 TYPE any
+                               p_val2 TYPE any.
+  IF gv_tem_registro = abap_false.
+    MESSAGE w398(00) WITH 'Nenhum registro encontrado'.
+  ELSE.
+    WRITE : gv_contador, ' registros encontrador.'.
+  ENDIF.
+ENDFORM.
+
+
+
+
+
+
+
+
+
+
+*--------------------------------------------------------------------*
+* VVVVVVVVVVVVVVVVVVVV LÓGICA ANTERIOR. VVVVVVVVVVVVVVVVVVVVVVVVVVVVVV.
+**--------------------------------------------------------------------*
+**MOSTRAR RELATÓRIO - BOTÃO 1.
+**--------------------------------------------------------------------*
+*  IF p_most IS NOT INITIAL AND p_ida1 IS NOT INITIAL.
+*    SELECT *
+*     FROM ztbgabriel001
+*     INTO TABLE gt_gabriel001
+*      WHERE ano => 1960 AND ano <= 1969.
+*
+*    IF sy-subrc IS INITIAL.
+*      LOOP AT gt_gabriel001 INTO gs_gabriel001.
+*        WRITE: 'Nome:',gs_gabriel001-nome,
+*             / 'Data:',gs_gabriel001-ano,
+*             / '---------------------------',
+*             /.
+*      ENDLOOP.
+*    ELSE.
+*      MESSAGE w398(00) WITH 'nenhum registro encontrado. Refazer busca.'.
+*    ENDIF.
+*  ENDIF.
+*
+**--------------------------------------------------------------------*
+**MOSTRAR RELATÓRIO - BOTÃO 2.
+**--------------------------------------------------------------------*
+*  IF p_most IS NOT INITIAL AND p_ida2 IS NOT INITIAL.
+*    SELECT *
+*     FROM ztbgabriel001
+*     INTO TABLE gt_gabriel001
+*      WHERE ano => 1970 AND ano <= 1979.
+*
+*      IF sy-subrc IS INITIAL.
+*        LOOP AT gt_gabriel001 INTO gs_gabriel001.
+*          WRITE: 'Nome:',gs_gabriel001-nome,
+*               / 'Data:',gs_gabriel001-ano,
+*               / '---------------------------',
+*               /.
+*        ENDLOOP.
+*      ELSE.
+*        MESSAGE w398(00) WITH 'nenhum registro encontrado. Refazer busca.'.
+*      ENDIF.
+*    ENDIF.
+*
+**--------------------------------------------------------------------*
+**MOSTRAR RELATÓRIO - BOTÃO 3.
+**--------------------------------------------------------------------*
+*    IF p_most IS NOT INITIAL AND p_ida3 IS NOT INITIAL.
+*      SELECT *
+*       FROM ztbgabriel001
+*       INTO TABLE gt_gabriel001
+*        WHERE ano => 1980 AND ano <= 1989.
+*        IF sy-subrc IS INITIAL.
+*          LOOP AT gt_gabriel001 INTO gs_gabriel001.
+*            WRITE: 'Nome:',gs_gabriel001-nome,
+*                 / 'Data:',gs_gabriel001-ano,
+*                 / '---------------------------',
+*                 /.
+*          ENDLOOP.
+*        ELSE.
+*          MESSAGE w398(00) WITH 'nenhum registro encontrado. Refazer busca.'.
+*        ENDIF.
+*      ENDIF.
+*
+**--------------------------------------------------------------------*
+**MOSTRAR RELATÓRIO - BOTÃO 4.
+**--------------------------------------------------------------------*
+*      IF p_most IS NOT INITIAL AND p_ida4 IS NOT INITIAL.
+*        SELECT *
+*         FROM ztbgabriel001
+*         INTO TABLE gt_gabriel001
+*          WHERE ano => 1990 AND ano <= 1999.
+*          IF sy-subrc IS INITIAL.
+*            LOOP AT gt_gabriel001 INTO gs_gabriel001.
+*              WRITE: 'Nome:',gs_gabriel001-nome,
+*                   / 'Data:',gs_gabriel001-ano,
+*                   / '---------------------------',
+*                   /.
+*            ENDLOOP.
+*          ELSE.
+*            MESSAGE w398(00) WITH 'nenhum registro encontrado. Refazer busca.'.
+*          ENDIF.
+*        ENDIF.
+*
+**--------------------------------------------------------------------*
+**MOSTRAR RELATÓRIO - BOTÃO 5.
+**--------------------------------------------------------------------*
+*        IF p_most IS NOT INITIAL AND p_ida5 IS NOT INITIAL.
+*          SELECT *
+*           FROM ztbgabriel001
+*           INTO TABLE gt_gabriel001
+*            WHERE ano => 2000 AND ano <= 2009.
+*            IF sy-subrc IS INITIAL.
+*              LOOP AT gt_gabriel001 INTO gs_gabriel001.
+*                WRITE: 'Nome:',gs_gabriel001-nome,
+*                     / 'Data:',gs_gabriel001-ano,
+*                     / '---------------------------',
+*                     /.
+*              ENDLOOP.
+*            ELSE.
+*              MESSAGE w398(00) WITH 'nenhum registro encontrado. Refazer busca.'.
+*            ENDIF.
+*          ENDIF.
+*
+**--------------------------------------------------------------------*
+**MOSTRAR RELATÓRIO - BOTÃO 6.
+**--------------------------------------------------------------------*
+*          IF p_most IS NOT INITIAL AND p_ida6 IS NOT INITIAL.
+*            SELECT *
+*             FROM ztbgabriel001
+*             INTO TABLE gt_gabriel001
+*              WHERE ano => 2010 AND ano <= 2019.
+*              IF sy-subrc IS INITIAL.
+*                LOOP AT gt_gabriel001 INTO gs_gabriel001.
+*                  WRITE: 'Nome:',gs_gabriel001-nome,
+*                       / 'Data:',gs_gabriel001-ano,
+*                       / '---------------------------',
+*                       /.
+*                ENDLOOP.
+*              ELSE.
+*                MESSAGE w398(00) WITH 'nenhum registro encontrado. Refazer busca.'.
+*              ENDIF.
+*            ENDIF.
+*
+**--------------------------------------------------------------------*
+**MOSTRAR RELATÓRIO - BOTÃO TODOS.
+**--------------------------------------------------------------------*
+*            IF p_most IS NOT INITIAL AND p_tods IS NOT INITIAL.
+*              SELECT *
+*               FROM ztbgabriel001
+*               INTO TABLE gt_gabriel001.
+*                IF sy-subrc IS INITIAL.
+*                  LOOP AT gt_gabriel001 INTO gs_gabriel001.
+*                    WRITE: 'Nome:',gs_gabriel001-nome,
+*                         / 'Data:',gs_gabriel001-ano,
+*                         / '---------------------------',
+*                         /.
+*                  ENDLOOP.
+*                ELSE.
+*                  MESSAGE w398(00) WITH 'nenhum registro encontrado. Refazer busca.'.
+*                ENDIF.
+*              ENDIF.

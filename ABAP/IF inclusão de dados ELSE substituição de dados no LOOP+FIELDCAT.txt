@@ -1,0 +1,164 @@
+**-----------------------------------------------------------------------
+** Programa : ZMMR001
+** Módulo   : MM
+** Transação: ZMM_FOLHASERV
+** Descrição: Relatório para administração de nf's/estoques
+** Autor    : Gariel da Costa
+** Data     : 11.04.2019
+**-----------------------------------------------------------------------
+**                           FUSION CONSULTORIA
+**-----------------------------------------------------------------------
+REPORT zmmr002.
+
+TABLES: ekbe, ekko.
+
+TYPES yt_join  TYPE TABLE OF zjoin WITH DEFAULT KEY.
+
+DATA gt_join TYPE yt_join.
+
+DATA go_alv TYPE REF TO cl_gui_alv_grid.
+
+DATA gt_fieldcat TYPE slis_t_fieldcat_alv.
+DATA gs_fieldcat LIKE LINE OF gt_fieldcat.
+DATA gs_layout  TYPE slis_layout_alv.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+SELECT-OPTIONS so_pedi  FOR ekko-ebeln." OBLIGATORY.
+SELECT-OPTIONS so_forn  FOR ekko-lifnr.
+SELECT-OPTIONS so_data  FOR ekbe-belnr.
+SELECTION-SCREEN END OF BLOCK b1.
+
+START-OF-SELECTION.
+
+  PERFORM z_busca_dados.
+
+  IF gt_join IS INITIAL.
+    MESSAGE 'Nenhum registro encontrado'(002) TYPE 'I' DISPLAY LIKE 'E'.
+  ELSE.
+    PERFORM z_exibe_alv.
+  ENDIF.
+
+FORM z_busca_dados.
+
+  SELECT ebeln,   "pedido
+         lifnr,   "fornecedor
+         aedat    "data
+
+    FROM ekko
+    INTO TABLE @DATA(gt_ekko)
+    WHERE ebeln IN @so_pedi
+    AND   lifnr IN @so_forn
+    AND   aedat IN @so_data.
+*--------------------------------------------------------------------*
+  IF gt_ekko IS NOT INITIAL.
+
+    SELECT belnr, "N° do material
+           ebelp, "item
+           budat, "data lçto documento
+           ebeln, "pedido
+           bewtp, "histórioco do pedido
+           xblnr,  "N° da nota
+           lfbnr
+      FROM ekbe
+      FOR ALL ENTRIES IN @gt_ekko
+      WHERE ebeln = @gt_ekko-ebeln
+      INTO TABLE @DATA(gt_ekbe).
+
+  ENDIF.
+*--------------------------------------------------------------------*
+  DATA: ls_join TYPE LINE OF yt_join.
+*--------------------------------------------------------------------*
+
+  LOOP AT gt_ekko ASSIGNING FIELD-SYMBOL(<ls_ekko>).
+
+    LOOP AT gt_ekbe ASSIGNING FIELD-SYMBOL(<ls_ekbe>) WHERE ebeln = <ls_ekko>-ebeln.
+
+      READ TABLE gt_join ASSIGNING FIELD-SYMBOL(<ls_join>) WITH KEY
+                                                                    "lfbnr = <ls_ekbe>-lfbnr
+                                                                    ebeln = <ls_ekko>-ebeln.
+      IF sy-subrc IS NOT INITIAL.
+
+        ls_join-ebeln = <ls_ekko>-ebeln.  "N° Pedido
+        ls_join-lifnr = <ls_ekko>-lifnr.  "fornecedor
+        ls_join-aedat = <ls_ekko>-aedat.  "data modif.
+        ls_join-ebelp = <ls_ekbe>-ebelp. "item N° Doc compra
+
+        CASE <ls_ekbe>-bewtp.
+          WHEN 'D'.
+            ls_join-belnr_ml81n = <ls_ekbe>-belnr. "N° doc ml81n
+            ls_join-budat_ml81n = <ls_ekbe>-budat. "data lçto
+          WHEN 'E'.
+            ls_join-belnr_migo = <ls_ekbe>-belnr.  "N° doc migo                              "ajustando
+            ls_join-budat_migo = <ls_ekbe>-budat.  "Data lçto
+          WHEN 'Q'.
+            ls_join-belnr_miro = <ls_ekbe>-belnr.  "N° doc miro
+            ls_join-budat_miro = <ls_ekbe>-budat.  "Data lçto
+        ENDCASE.
+
+        "ls_join-xblnr = <ls_ekbe>-xblnr.
+        "ls_join-lfbnr = <ls_ekbe>-lfbnr.
+
+        APPEND ls_join TO gt_join.
+        CLEAR ls_join.
+
+      ELSE.
+
+        CASE <ls_ekbe>-bewtp.
+          WHEN 'D'.
+            <ls_join>-belnr_ml81n = <ls_ekbe>-belnr. "N° doc ml81n
+            <ls_join>-budat_ml81n = <ls_ekbe>-budat. "data lçto
+          WHEN 'E'.
+            <ls_join>-belnr_migo = <ls_ekbe>-belnr.  "N° doc migo                              "ajustando
+            <ls_join>-budat_migo = <ls_ekbe>-budat.  "Data lçto
+          WHEN 'Q'.
+            <ls_join>-belnr_miro = <ls_ekbe>-belnr.  "N° doc miro
+            <ls_join>-budat_miro = <ls_ekbe>-budat.  "Data lçto
+        ENDCASE.
+        "<ls_join>-xblnr = <ls_ekbe>-xblnr.
+
+      ENDIF.
+    ENDLOOP.
+  ENDLOOP.
+
+
+ENDFORM.
+
+FORM z_exibe_alv.
+
+  gs_layout-zebra = 'X'.
+  gs_layout-colwidth_optimize = 'X'.
+*--------------------------------------------------------------------*
+
+  CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
+    EXPORTING
+      i_structure_name = 'ZJOIN'
+    CHANGING
+      ct_fieldcat      = gt_fieldcat.
+*  EXCEPTIONS
+*     INCONSISTENT_INTERFACE       = 1
+*     PROGRAM_ERROR                = 2
+*     OTHERS                       = 3
+
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+
+  ENDIF.
+  READ TABLE gt_fieldcat ASSIGNING FIELD-SYMBOL(<ls_fcat>) WITH KEY fieldname = 'BEWTP'.
+  IF sy-subrc = 0.
+    <ls_fcat>-no_out = abap_true.
+    <ls_fcat>-tech   = abap_true.
+  ENDIF.
+*--------------------------------------------------------------------*
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      is_layout        = gs_layout
+      it_fieldcat      = gt_fieldcat
+      i_structure_name = 'ZJOIN'
+    TABLES
+      t_outtab         = gt_join
+    EXCEPTIONS
+      program_error    = 1
+      OTHERS           = 2.
+
+ENDFORM.

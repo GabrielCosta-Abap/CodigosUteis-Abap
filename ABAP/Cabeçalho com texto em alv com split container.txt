@@ -1,0 +1,88 @@
+    IF go_splitter IS INITIAL.
+
+      "Cria o objeto Split Container para inserir o ALV, utilizando duas linhas
+      CREATE OBJECT go_splitter
+        EXPORTING
+          parent  = cl_gui_container=>default_screen
+          rows    = 2
+          columns = 1
+          metric  = '0001'.
+
+      "Define o tamanho da linha 1
+      CALL METHOD go_splitter->set_row_height
+        EXPORTING
+          id                = 1
+          height            = 5
+        EXCEPTIONS
+          cntl_error        = 1
+          cntl_system_error = 2
+          OTHERS            = 3.
+
+      "Define o tamanho da linha 2
+      CALL METHOD go_splitter->set_row_height
+        EXPORTING
+          id                = 2
+          height            = 13
+        EXCEPTIONS
+          cntl_error        = 1
+          cntl_system_error = 2
+          OTHERS            = 3.
+
+    ENDIF.
+
+    CALL METHOD go_splitter->get_container
+      EXPORTING
+        row       = 1
+        column    = 1
+      RECEIVING
+        container = go_container.
+
+*    go_container         = go_splitter->get_container( row = 1 column = 1 ).
+    go_container_cab     = go_splitter->get_container( row = 2 column = 1 ).
+
+*--------------------------------------------------------------------*
+    "--- cria o cabeçalho do relatório.
+    DATA: editor       TYPE REF TO cl_gui_textedit.
+
+    SELECT SINGLE maktx
+      INTO @DATA(v_maktx)
+      FROM makt
+      WHERE matnr = @v_matnr
+        AND spras = 'P'.
+
+* Declara tabela interna
+    DATA: linha(256),
+          texto_tab LIKE STANDARD TABLE OF linha.
+
+    linha = |Material: { v_matnr }|.
+    APPEND linha TO texto_tab.
+
+    linha = | Cent/Util/Alt: { v_werks }| & | / { '1' }| & |{ '01' }|.
+    APPEND linha TO texto_tab.
+
+    linha = | Denominação: { v_maktx }|.
+    APPEND linha TO texto_tab.
+
+    linha = | Qtd. Base (PC: { ' ' }|.
+    APPEND linha TO texto_tab.
+
+    linha = | Qtd. Requer (PC): { ' ' }|.
+    APPEND linha TO texto_tab.
+
+    CREATE OBJECT editor
+      EXPORTING
+        wordwrap_mode              = editor->wordwrap_at_fixed_position
+        wordwrap_position          = 30
+        wordwrap_to_linebreak_mode = editor->true
+        parent                     = go_container
+      EXCEPTIONS
+        OTHERS                     = 1.
+
+* Adiciona texto
+    CALL METHOD editor->set_text_as_stream
+      EXPORTING
+        text = texto_tab.
+
+    CALL METHOD editor->set_enable
+      EXPORTING
+        enable = ''.

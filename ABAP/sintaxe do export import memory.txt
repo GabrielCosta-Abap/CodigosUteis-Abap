@@ -1,0 +1,2 @@
+EXPORT parameters = lt_params TO MEMORY ID znfi1_memid_parameters.  
+IMPORT adddata = es_adddata FROM MEMORY ID znfi1_memid_adddata.

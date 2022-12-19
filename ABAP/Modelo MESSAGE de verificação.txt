@@ -1,0 +1,16 @@
+form check_f110_data.
+
+  if gt_reguta is initial.
+    MESSAGE S398(00) WITH 'Arquivo de cobrança para' p_laufd 'e' p_laufi 'Não encontrado' type 'S' DISPLAY LIKE 'E'.  
+  else.
+    perform f_sapgui_progress_indicator using 'Verificando dados...'.
+  endif.
+
+endform.
+
+form f_sapgui_progress_indicator using pv_text.
+  call function 'SAPGUI_PROGRESS_INDICATOR'
+    exporting
+      percentage = 0
+      text       = pv_text.
+endform.

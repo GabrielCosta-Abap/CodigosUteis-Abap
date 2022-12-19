@@ -1,0 +1,89 @@
+data alv           type ref to cl_gui_alv_grid.
+data go_container  type ref to cl_gui_container.
+
+perform display_data.
+
+
+form display_data.
+
+  data(ls_fcat) = value lvc_s_fcat( fieldname = 'ERFMG'
+                                    outputlen = '10'
+                                    col_pos = 8
+                                    edit = 'X'
+                                    scrtext_l = 'Quantidade a ser transferida' ).
+  data lt_fcat type lvc_t_fcat.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'MATNR'.
+  ls_fcat-outputlen = '7'.
+  ls_fcat-col_pos = 1.
+*  ls_fcat-edit = 'X'.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'MAKTX'.
+  ls_fcat-outputlen = '11'.
+  ls_fcat-col_pos = 2.
+*  ls_fcat-edit = 'X'.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'CLABS'.
+  ls_fcat-outputlen = '6'.
+  ls_fcat-col_pos = 6.
+*  ls_fcat-edit = 'X'.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'WEANZ'.
+  ls_fcat-outputlen = '10'.
+  ls_fcat-col_pos = 10.
+  ls_fcat-edit = 'X'.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  ls_fcat-fieldname = 'log'.
+  ls_fcat-outputlen = '100'.
+  ls_fcat-col_pos = 12.
+*  ls_fcat-edit = 'X'.
+  append ls_fcat to lt_fcat.
+  clear ls_fcat.
+
+  data(ls_layo) = value lvc_s_layo( "cwidth_opt = 'X'
+                                    zebra      = abap_true
+                                    sel_mode   = 'A' ).
+
+  if alv is initial.
+
+    alv = new #( i_parent = go_container ).
+
+    ls_layo-sel_mode      = 'A'.            "<<<<
+    g_variant-report       = sy-repid.          "<<<<
+    g_variant-username     = sy-uname.   "<<<<
+
+    alv->set_table_for_first_display(
+
+      exporting
+          i_structure_name              = 'ZSMMR001'
+          i_save                        = 'A'
+          i_default                     = 'X'
+          is_layout                     = ls_layo
+          is_variant                    = g_variant
+      changing
+          it_outtab                     = gt_join
+          it_fieldcatalog               = lt_fcat
+    exceptions
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        others                        = 4
+
+  ).
+
+    if sy-subrc <> 0.
+      message id sy-msgid type 'E' number sy-msgno with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    endif.
+    call method alv->check_changed_data.
+  endif.
+endform.

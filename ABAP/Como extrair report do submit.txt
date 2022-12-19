@@ -1,0 +1,169 @@
+Busca documentos em aberto para a conta de issqn
+    SUBMIT rfitemgl
+           WITH sd_saknr IN rc_hkont_c1
+           WITH sd_bukrs IN so_bukrs
+           WITH x_opsel  = 'X'
+           WITH pa_stida = p_dtab
+           WITH x_norm   = 'X'
+           EXPORTING LIST TO MEMORY
+           AND RETURN.
+
+  DATA: lt_list TYPE TABLE OF abaplist.
+  DATA: lt_listtab TYPE TABLE OF line.
+  DATA: ls_listtab TYPE line.
+  DATA: ls_dados_mb52 TYPE zmmemb52.
+  DATA: lv_bilapagno TYPE rfpdo3-bilapagno.
+  DATA: lv_peinh TYPE mbew-peinh.
+  DATA: lv_meins TYPE meins.
+
+  DATA: lv_val1(60)  TYPE c,
+        lv_val2(60)  TYPE c,
+        lv_val3(60)  TYPE c,
+        lv_val4(60)  TYPE c,
+        lv_val5(60)  TYPE c,
+        lv_val6(60)  TYPE c,
+        lv_val7(60)  TYPE c,
+        lv_val8(60)  TYPE c,
+        lv_val9(60)  TYPE c,
+        lv_val10(60) TYPE c,
+        lv_val11(60) TYPE c,
+        lv_val12(60) TYPE c,
+        lv_val13(60) TYPE c,
+        lv_val14(60) TYPE c,
+        lv_val15(60) TYPE c,
+        lv_val16(60) TYPE c,
+        lv_val17(60) TYPE c,
+        lv_val18(60) TYPE c,
+        lv_val19(60) TYPE c,
+        lv_val20(60) TYPE c,
+        lv_vali(60)  TYPE c,
+        lv_vale(60)  TYPE c.
+
+ CALL FUNCTION 'LIST_FROM_MEMORY'
+    TABLES
+      listobject = lt_list
+    EXCEPTIONS
+      not_found  = 1.
+
+  IF sy-subrc EQ 0.
+
+    CALL FUNCTION 'LIST_TO_ASCI'
+      TABLES
+        listasci           = lt_listtab
+        listobject         = lt_list
+      EXCEPTIONS
+        empty_list         = 1
+        list_index_invalid = 2.
+
+    "Elimina os diferentes dos centros informados
+    DELETE lt_listtab WHERE line+2(4) NOT IN rc_werks.
+
+    LOOP AT lt_listtab INTO ls_listtab.
+
+      SPLIT ls_listtab-line AT '|' INTO lv_val1  lv_val2  lv_val3  lv_val4  lv_val5  lv_val6  lv_val7
+                                        lv_val8  lv_val9  lv_val10 lv_val11 lv_val12 lv_val13 lv_val14
+                                        lv_val15 lv_val16 lv_val17 lv_val18 lv_val19 lv_val20.
+      CONDENSE lv_val2.
+      ls_dados_mb52-werks  = lv_val2.
+      ls_dados_mb52-matnr  = lv_val3.
+
+      CALL FUNCTION 'CONVERSION_EXIT_MATN1_INPUT'
+        EXPORTING
+          input  = ls_dados_mb52-matnr
+        IMPORTING
+          output = ls_dados_mb52-matnr.
+      "descricao
+      ls_dados_mb52-maktx   = lv_val4.
+      "um
+      ls_dados_mb52-meins   = lv_val5.
+      "deposito
+      ls_dados_mb52-lgort   = lv_val6.
+      "Tipo material
+      ls_dados_mb52-mtart   = lv_val7.
+      "lote
+      ls_dados_mb52-charg   = lv_val8.
+      "estoque esp
+      ls_dados_mb52-sobkz   = lv_val9.
+
+      "Nº estoque especial
+      ls_dados_mb52-ssnum     =  lv_val14.
+
+     "Moeda
+      ls_dados_mb52-waers     =  lv_val15.
+
+      "Vlr util livre
+      lv_vali                   = lv_val16.
+      PERFORM f_converte_montante USING lv_vali
+                                  CHANGING lv_vale.
+      ls_dados_mb52-vlr_util_livre     = lv_vale.
+
+      "Vlr tran trf
+      lv_vali                  = lv_val17.
+      PERFORM f_converte_montante USING lv_vali
+                                  CHANGING lv_vale.
+      ls_dados_mb52-vlr_tran_trf     = lv_vale.
+
+      "Vlr verf qld
+      lv_vali                  = lv_val18.
+      PERFORM f_converte_montante USING lv_vali
+                                  CHANGING lv_vale.
+      ls_dados_mb52-vlr_verf_qual     = lv_vale.
+
+      "Vlr estq bloq
+      lv_vali                  = lv_val19.
+      PERFORM f_converte_montante USING lv_vali
+                                  CHANGING lv_vale.
+      ls_dados_mb52-vlr_estq_bloq    = lv_vale.
+
+      APPEND ls_dados_mb52 TO lt_dados_mb52.
+    ENDLOOP.
+
+  ENDIF.
+
+
+FORM f_converte_montante USING    p_montante_e
+                        CHANGING p_montante_s.
+  DATA: cnt           TYPE i,
+        moff          TYPE i,
+        lc_um(4),
+        lc_dois(3),
+        lc_tres(3),
+        lc_quatro(3),
+        lc_cinco(3),
+        lc_seis(3),
+        lc_valor1(19),
+        lc_valor2(20).
+  TRANSLATE p_montante_e USING ',.'.
+  FIND '.' IN p_montante_e MATCH COUNT cnt MATCH OFFSET moff.
+  IF cnt IS INITIAL.
+    CONCATENATE p_montante_e '.00' INTO p_montante_e.
+  ENDIF.
+  CONDENSE p_montante_e NO-GAPS.
+  SPLIT p_montante_e AT '.' INTO lc_um lc_dois lc_tres lc_quatro lc_cinco lc_seis.
+  IF lc_seis IS NOT INITIAL.
+    CONCATENATE lc_um lc_dois lc_tres lc_quatro lc_cinco '.' lc_seis INTO lc_valor1.
+  ELSEIF lc_cinco IS NOT INITIAL.
+    CONCATENATE lc_um lc_dois lc_tres lc_quatro '.' lc_cinco INTO lc_valor1.
+  ELSEIF lc_quatro IS NOT INITIAL.
+    CONCATENATE lc_um lc_dois lc_tres '.' lc_quatro INTO lc_valor1.
+  ELSEIF lc_tres IS NOT INITIAL.
+    CONCATENATE lc_um lc_dois '.' lc_tres           INTO lc_valor1.
+  ELSEIF lc_dois IS NOT INITIAL.
+    CONCATENATE lc_um '.' lc_dois                   INTO lc_valor1.
+  ENDIF.
+
+  FIND '-' IN p_montante_e MATCH COUNT cnt.
+  IF cnt IS INITIAL.
+    lc_valor2 = lc_valor1.
+    SHIFT lc_valor2 RIGHT DELETING TRAILING ' '.
+    TRANSLATE lc_valor2 USING ' 0'.
+  ELSE.
+    TRANSLATE lc_valor1 USING '- '.
+    SHIFT lc_valor1 RIGHT DELETING TRAILING ' '.
+    TRANSLATE lc_valor1 USING ' 0'.
+    CONCATENATE lc_valor1 '-' INTO lc_valor2.
+  ENDIF.
+
+  p_montante_s = lc_valor2.
+
+ENDFORM.                               "

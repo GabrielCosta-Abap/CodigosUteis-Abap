@@ -1,0 +1,33 @@
+
+  DATA gr_table     TYPE REF TO cl_salv_table.
+  DATA gr_functions TYPE REF TO cl_salv_functions.
+  DATA gr_display   TYPE REF TO cl_salv_display_settings.
+  DATA columns      TYPE REF TO cl_salv_columns_table.
+  DATA column    TYPE REF TO cl_salv_column.
+
+  cl_salv_table=>factory(
+     IMPORTING
+     r_salv_table = gr_table
+     CHANGING
+     t_table      = gt_output
+   ).
+
+  columns = gr_table->get_columns( ).
+  columns->set_optimize( ).
+
+  column = columns->get_column( columnname = 'STATUS' ).
+  column->set_short_text( 'Status' ).
+  column->set_medium_text( 'Status').
+  column->set_long_text( 'Status' ).
+
+*  column = columns->get_column( ' ' ).
+*  column->set_visible( abap_false ).
+
+  gr_functions = gr_table->get_functions( ).
+  gr_functions->set_all( abap_true ).
+
+  gr_display = gr_table->get_display_settings( ).
+  gr_display->set_list_header( 'Relatório de NFs Baixadas do SEFAZ' ).
+  gr_display->set_striped_pattern( abap_true ).
+
+  gr_table->display( ).

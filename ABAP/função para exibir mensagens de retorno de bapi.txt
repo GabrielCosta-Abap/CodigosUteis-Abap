@@ -1,0 +1,5 @@
+FUNÇÃO PARA EXIBIR BAPIRETURN
+
+    CALL FUNCTION 'RSCRMBW_DISPLAY_BAPIRET2'
+      TABLES
+        it_return = lt_return.

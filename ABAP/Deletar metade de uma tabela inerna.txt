@@ -1,0 +1,4 @@
+DATA(lv_lines) = lines( mt_group_h001 ) / 2.
+DO lv_lines TIMES.
+  DELETE mt_group_h001 INDEX 1.
+ENDDO.

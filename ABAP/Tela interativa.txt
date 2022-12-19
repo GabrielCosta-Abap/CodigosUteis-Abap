@@ -1,0 +1,58 @@
+
+selection-screen begin of block b3 with frame title text-003.
+parameters p_te1 radiobutton group gr1 default 'X' user-command radio.
+parameters p_te2 radiobutton group gr1.
+parameters p_rad radiobutton group gr1.
+selection-screen end of block b3.
+
+selection-screen begin of block b1 with frame title text-001.
+select-options p_vbeln for vbak-vbeln modif id t1.
+select-options p_erdat for vbak-erdat modif id t1.
+select-options p_erzet for vbak-erzet modif id t1.
+select-options p_matnr for vbap-matnr modif id t1.
+select-options p_matwa for vbap-matwa modif id t1.
+select-options p_pmatn for vbap-pmatn modif id t1.
+selection-screen end of block b1.
+
+selection-screen begin of block b2 with frame title text-002.
+parameters     p_nome type ztbgabriel001-nome modif id t2.
+select-options p_ano  for  ztbgabriel001-ano modif id t2.
+selection-screen end of block b2.
+selection-screen skip.
+
+at selection-screen output.
+
+  if p_te1 is not initial.
+    perform muda_tela using 'T2' .
+  elseif p_te2 is not initial.
+    perform muda_tela using 'T1' .
+  elseif p_rad is not initial.
+    perform muda_tela using 'T0'.
+  endif.
+
+start-of-selection.
+  if p_te1 is not initial.
+    perform seleciona_dados_vendas.
+  elseif p_te2 is not initial.
+    perform seleciona_dados_tabelaz.
+    endif.
+  if p_rad is not initial.
+  perform seleciona_para_container.
+  endif.
+
+
+*-------------------------------------------------
+
+form muda_tela using p_change.
+
+  loop at screen.
+    if screen-group1 = p_change  and screen-group1 is not initial.
+      screen-active = '0'.
+    else.
+      screen-active = '1'.
+    endif.
+    modify screen.
+    continue.
+
+  endloop.
+endform.

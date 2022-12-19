@@ -1,0 +1,11 @@
+    DO.
+      ASSIGN COMPONENT sy-index OF STRUCTURE wa_bapiitem TO FIELD-SYMBOL(<fs_bapiitem>).
+      IF sy-subrc <> 0.
+        EXIT.
+      ENDIF.
+
+      ASSIGN COMPONENT sy-index OF STRUCTURE wa_bapiitemx TO FIELD-SYMBOL(<fs_bapiitemx>).
+      IF <fs_bapi> IS NOT INITIAL.
+        <fs_bapix> = 'X'.
+      ENDIF.
+    ENDDO.

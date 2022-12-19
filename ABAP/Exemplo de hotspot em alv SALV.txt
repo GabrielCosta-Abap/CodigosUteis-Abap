@@ -1,0 +1,250 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZFIR118_CLS
+*&---------------------------------------------------------------------*
+CLASS lcl_relatorio DEFINITION.
+  PUBLIC SECTION.
+    TYPES: BEGIN OF ty_alv,
+             bukrs     TYPE zfit116-bukrs ,
+             belnr     TYPE zfit116-belnr ,
+             gjahr     TYPE zfit116-gjahr ,
+             buzei     TYPE zfit116-buzei ,
+             zcdpro    TYPE zfit116-zcdpro ,
+             zdtpro    TYPE zfit116-zdtpro ,
+             cputm     TYPE zfit116-cputm ,
+             zlogin    TYPE zfit116-zlogin ,
+             augbl     TYPE zfit116-augbl ,
+             auggj     TYPE zfit116-auggj ,
+             augdt     TYPE zfit116-augdt ,
+             zvctp     TYPE zfit116-zvctp ,
+             kunnr     TYPE zfit116-kunnr ,
+             zname     TYPE zfit116-zname ,
+             zcnpje    TYPE zfit116-zcnpje ,
+             zcnpjp    TYPE zfit116-zcnpjp ,
+             butxt     TYPE zfit116-butxt ,
+             xblnr     TYPE zfit116-xblnr ,
+             bldat     TYPE zfit116-bldat ,
+             budat     TYPE zfit116-budat ,
+             blart     TYPE zfit116-blart ,
+             netdt     TYPE zfit116-netdt ,
+             zrating   TYPE zfit116-zrating ,
+             ztxrat    TYPE zfit116-ztxrat ,
+             zdiam     TYPE zfit116-zdiam ,
+             zmtini    TYPE zfit116-zmtini ,
+             zmtabt    TYPE zfit116-zmtabt ,
+             zvljur    TYPE zfit116-zvljur ,
+             zmtfin    TYPE zfit116-zmtfin ,
+             zmtpro    TYPE zfit116-zmtpro ,
+             waers     TYPE zfit116-waers ,
+             zdcrr     TYPE zfit116-zdcrr ,
+             zexdcrr   TYPE zfit116-zexdcrr ,
+             zlsch     TYPE zfit116-zlsch ,
+             zstabt    TYPE zfit116-zstabt ,
+             zstpro    TYPE zfit116-zstpro ,
+             stabt(3)  TYPE c,
+             stpro(20) TYPE c,
+           END OF ty_alv.
+
+    DATA gt_output TYPE TABLE OF ty_alv.
+
+    METHODS seleciona_dados.
+    METHODS processa_dados.
+    METHODS exibe_alv.
+
+  PRIVATE SECTION.
+    DATA lr_table     TYPE REF TO cl_salv_table.
+    DATA lr_functions TYPE REF TO cl_salv_functions.
+    DATA lr_display   TYPE REF TO cl_salv_display_settings.
+    DATA columns      TYPE REF TO cl_salv_columns_table.
+    DATA column       TYPE REF TO cl_salv_column.
+    DATA column_table TYPE REF TO cl_salv_column_table.
+
+    DATA: lo_layout  TYPE REF TO cl_salv_layout,
+          lf_variant TYPE slis_vari,
+          ls_key     TYPE salv_s_layout_key.
+
+    METHODS set_coltxt
+      IMPORTING columnname    TYPE lvc_fname
+                set_long_text TYPE scrtext_l.
+
+    METHODS set_hotspot_fields
+      IMPORTING columnname TYPE lvc_fname.
+
+    METHODS:
+      set_layout,
+      set_alv_header.
+
+ENDCLASS.
+
+CLASS lcl_alv_handler DEFINITION.
+
+  PUBLIC SECTION.
+    DATA lr_relat TYPE REF TO lcl_relatorio.
+
+    METHODS constructor IMPORTING ir_relat TYPE REF TO lcl_relatorio.
+
+    METHODS on_hotspot_click " Passo 3
+          FOR EVENT link_click OF if_salv_events_actions_table
+      IMPORTING
+          column
+          row
+          sender.
+
+ENDCLASS.
+
+CLASS lcl_alv_handler IMPLEMENTATION.
+
+  METHOD constructor.
+    lr_relat = ir_relat.
+  ENDMETHOD.
+
+  METHOD on_hotspot_click.
+
+    READ TABLE lr_relat->gt_output INTO DATA(ls_output) INDEX row.
+
+    ASSIGN COMPONENT column OF STRUCTURE ls_output TO FIELD-SYMBOL(<doc>).
+    ASSIGN COMPONENT 'BUKRS' OF STRUCTURE ls_output TO FIELD-SYMBOL(<bukrs>).
+
+    IF <doc> IS ASSIGNED.
+      SET PARAMETER ID 'BLN' FIELD <doc>.
+      SET PARAMETER ID 'BUK' FIELD <bukrs>.
+      SET PARAMETER ID 'GJR' FIELD space.
+    ENDIF.
+
+    CALL TRANSACTION 'FB03' AND SKIP FIRST SCREEN.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lcl_relatorio IMPLEMENTATION.
+
+  METHOD seleciona_dados.
+    SELECT *
+      FROM zfit116
+      INTO CORRESPONDING FIELDS OF TABLE gt_output
+      WHERE bukrs    IN so_bukrs
+        AND kunnr    IN so_kunnr
+        AND xblnr    IN so_xblnr
+        AND zcdpro   IN so_cdpro
+        AND zdtpro   IN so_dtpro
+        AND belnr    IN so_belnr
+        AND gjahr    IN so_gjahr
+        AND zvctp    IN so_zvctp
+        AND zstpro   IN so_stpro
+        AND augdt    IN so_augdt.
+  ENDMETHOD.
+
+  METHOD processa_dados.
+
+    LOOP AT gt_output ASSIGNING FIELD-SYMBOL(<ls_output>).
+
+      CASE <ls_output>-zstabt.
+        WHEN 'S'.
+          <ls_output>-stabt = 'Sim'.
+        WHEN 'N'.
+          <ls_output>-stabt = 'Não'.
+      ENDCASE.
+
+      CASE <ls_output>-zstpro.
+        WHEN 'N'.
+          <ls_output>-stpro = 'Em processamento'.
+        WHEN 'R'.
+          <ls_output>-stpro = 'Rejeitado'.
+        WHEN 'A'.
+          <ls_output>-stpro = 'Aceito '.
+      ENDCASE.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD exibe_alv.
+
+    cl_salv_table=>factory(
+       IMPORTING
+       r_salv_table = lr_table
+       CHANGING
+       t_table      = gt_output
+     ).
+
+    columns = lr_table->get_columns( ).
+    columns->set_optimize( ).
+
+    me->set_coltxt( columnname    = 'STABT'
+                    set_long_text = 'Possui Abatimento' ).
+
+    me->set_coltxt( columnname    = 'STPRO'
+                    set_long_text = 'Status Prorrogação'  ).
+
+    column = columns->get_column( 'ZSTABT' ).
+    column->set_visible( abap_false ).
+
+    column = columns->get_column( 'ZSTPRO' ).
+    column->set_visible( abap_false ).
+
+    me->set_hotspot_fields( 'BELNR' ).
+    me->set_hotspot_fields( 'AUGBL' ).
+    me->set_hotspot_fields( 'XBLNR' ).
+    me->set_hotspot_fields( 'ZDCRR' ).
+*
+*...Events
+    DATA: lo_events TYPE REF TO cl_salv_events_table.
+*
+*   all events
+    lo_events = lr_table->get_event( ).
+*
+    DATA(lo_link_click) = NEW lcl_alv_handler( ir_relat = me ).
+
+*   event handler
+    SET HANDLER lo_link_click->on_hotspot_click FOR lo_events.
+
+    me->set_layout( ).
+    me->set_alv_header( ).
+
+    lr_table->display( ).
+
+  ENDMETHOD.
+
+  METHOD set_coltxt.
+    column = columns->get_column( columnname = columnname ).
+    column->set_short_text( '' ).
+    column->set_medium_text( '' ).
+    column->set_long_text( set_long_text ).
+    column->set_alignment( 3 ).
+  ENDMETHOD.
+
+  METHOD set_hotspot_fields.
+
+    TRY.
+        column_table ?= columns->get_column( columnname ).
+      CATCH cx_salv_not_found.
+    ENDTRY.
+
+    TRY.
+        column_table->set_cell_type(
+         EXPORTING
+           value = if_salv_c_cell_type=>hotspot ).
+        .
+      CATCH cx_salv_data_error .
+    ENDTRY.
+
+  ENDMETHOD.
+
+  METHOD set_layout.
+    ls_key-report = sy-repid.
+    lo_layout = lr_table->get_layout( ).
+    lo_layout->set_key( ls_key ).
+    lo_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+    lo_layout->set_initial_layout( p_lay ).
+  ENDMETHOD.
+
+  METHOD set_alv_header.
+    lr_functions = lr_table->get_functions( ).
+    lr_functions->set_all( abap_true ).
+
+    lr_display = lr_table->get_display_settings( ).
+    lr_display->set_list_header( 'Relatório de consulta a títulos prorrogados' ).
+    lr_display->set_striped_pattern( abap_true ).
+  ENDMETHOD.
+
+ENDCLASS.

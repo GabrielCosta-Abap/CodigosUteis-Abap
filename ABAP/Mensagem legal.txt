@@ -1,0 +1,35 @@
+DATA: lt_tab TYPE esp1_message_tab_type.
+DATA: ls_tab TYPE esp1_message_wa_type.
+
+ls_tab-msgid  = 'E4'.
+ls_tab-msgty  = 'E'.
+ls_tab-msgno  = '000'.
+ls_tab-msgv1  = 'Quantidade de remessas'.
+ls_tab-msgv2  = 'excedida/verificar'.
+ls_tab-msgv3  = 'limite no cadast. do cliente'.
+ls_tab-lineno = 1.
+APPEND ls_tab TO lt_tab.
+
+  CALL FUNCTION 'C14Z_MESSAGES_SHOW_AS_POPUP'
+    TABLES
+      i_message_tab = lt_tab.
+
+----------------------------------------------------
+      LOOP AT lt_return INTO DATA(ls_return).
+
+        APPEND VALUE #(
+            msgid  = ls_return-id
+            msgty  = ls_return-type
+            msgno  = ls_return-log_no
+            msgv1  = ls_return-message
+            msgv2  = ls_return-message_v1
+            msgv3  = ls_return-message_v2
+            lineno = 1  ) TO lt_tab.
+
+      ENDLOOP.
+
+      IF lt_tab IS NOT INITIAL.
+        CALL FUNCTION 'C14Z_MESSAGES_SHOW_AS_POPUP'
+          TABLES
+            i_message_tab = lt_tab.
+      ENDIF.

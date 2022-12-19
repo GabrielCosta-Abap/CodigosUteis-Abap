@@ -1,0 +1,30 @@
+CLASS lcl_alv_handler DEFINITION.
+
+
+  PUBLIC SECTION.
+
+
+    METHODS on_double_click " Passo 3
+
+          FOR EVENT double_click OF if_salv_events_actions_table
+
+      IMPORTING
+
+          column
+
+          row.
+
+
+ENDCLASS.
+
+
+CLASS lcl_alv_handler IMPLEMENTATION.
+
+
+  METHOD on_double_click.
+
+    BREAK-POINT.
+
+  ENDMETHOD.
+
+ENDCLASS.

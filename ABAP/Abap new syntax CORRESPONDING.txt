@@ -1,0 +1,10 @@
+
+DATA tab_sales TYPE TABLE OF mara.
+DATA tab_ekpo TYPE TABLE OF ekpo.
+
+
+tab_sales = VALUE #( ( matnr = 'IBM' mtart = 9000 ) ).
+
+tab_ekpo = CORRESPONDING #( tab_sales ).
+tab_ekpo = CORRESPONDING #( tab_sales MAPPING MATNR = MATNR
+                                              MTART = MTART ).

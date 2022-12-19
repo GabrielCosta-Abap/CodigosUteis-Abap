@@ -1,0 +1,45 @@
+    DATA: lo_table       TYPE REF TO cl_abap_tabledescr,
+          lo_struct      TYPE REF TO cl_abap_structdescr,
+          lt_comp        TYPE abap_component_tab,
+          ls_comp        TYPE abap_componentdescr,
+          lv_coltext(30) TYPE c,
+          lv_checkbox.
+
+    lo_table ?= cl_abap_typedescr=>describe_by_data( gt_output ).
+    lo_struct ?= lo_table->get_table_line_type( ).
+    lt_comp = lo_struct->get_components( ).
+
+    LOOP AT lt_comp INTO ls_comp.
+      CLEAR lv_checkbox.
+
+      CASE ls_comp-name.
+        WHEN 'FLAG'.
+          lv_coltext = 'Linha'.
+          lv_checkbox = 'X'.
+        WHEN 'IDNRK'.
+          lv_coltext = 'Obj'.
+        WHEN 'OJTXP'.
+          lv_coltext = 'Texto breve do Objeto'.
+        WHEN 'MNGLG'.
+          lv_coltext = 'Qtd.'.
+        WHEN 'MMEIN'.
+          lv_coltext = 'UM'.
+        WHEN 'MTART'.
+          lv_coltext = 'Tipo de material'.
+        WHEN 'LGPRO'.
+          lv_coltext = 'Depósito destino'.
+        WHEN 'LGORT'.
+          lv_coltext = 'Posição no depósito'.
+        WHEN 'LABST'.
+          lv_coltext = 'Qtd. depósito'.
+        WHEN 'DIF_DEP'.
+          lv_coltext = 'Diferença entre depósitos'.
+      ENDCASE.
+
+      DATA(ls_fcat) = VALUE lvc_s_fcat( fieldname = ls_comp-name
+                                        coltext   = lv_coltext
+                                        checkbox  = lv_checkbox
+                                        col_opt   = 'X' ).
+      APPEND ls_fcat TO gt_fcat.
+      CLEAR ls_fcat.
+    ENDLOOP.

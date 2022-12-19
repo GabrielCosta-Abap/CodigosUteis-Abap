@@ -1,0 +1,12 @@
+  select
+    from with_item as a
+    inner join bkpf as b on a~bukrs = b~bukrs
+    fields a~bukrs,
+           a~belnr,
+           a~wt_qsshh,
+           a~wt_qsshb,
+    sum( a~wt_qsshh ) as sum_wt
+    group by a~wt_qsshh, a~wt_qsshb, a~bukrs, a~belnr
+    into table @data(temp).
+
+  break-point.

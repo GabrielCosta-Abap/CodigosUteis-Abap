@@ -1,0 +1,16 @@
+  FIELD-SYMBOLS: <fs_output> LIKE LINE OF gt_output.
+
+  LOOP AT gt_output ASSIGNING <fs_output>.
+    CLEAR  <fs_output>-flag.
+  ENDLOOP.
+
+  IF go_alv IS INITIAL.
+    CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+      IMPORTING
+        e_grid = go_alv.
+  ENDIF.
+
+  IF NOT go_alv IS INITIAL.
+    go_alv->check_changed_data( ).
+  ENDIF.
+  go_alv->refresh_table_display( ).

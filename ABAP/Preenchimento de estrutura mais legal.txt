@@ -1,0 +1,35 @@
+
+data t_table type table of mara.
+data s_table like line of t_table.
+
+select *
+  from mara
+  into table @data(t_mara).
+
+data s_mara like line of t_mara.
+
+*--------------------------------------------------------------------*
+loop at t_mara into s_mara.
+
+  s_table = value #( matnr = s_mara-matnr
+                     ersda = s_mara-ersda
+                     ernam = s_mara-laeda ).
+
+  append s_table to t_table.
+  clear s_table.
+endloop.
+*--------------------------------------------------------------------*
+
+data: gr_table type ref to cl_salv_table.
+data: gr_functions type ref to cl_salv_functions.
+
+
+cl_salv_table=>factory(
+ importing
+   r_salv_table = gr_table
+   changing t_table = t_table ).
+
+gr_functions = gr_table->get_functions( ).
+gr_functions->set_all( abap_true ).
+
+gr_table->display( ).

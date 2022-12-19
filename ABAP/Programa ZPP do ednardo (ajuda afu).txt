@@ -1,0 +1,889 @@
+*****************
+"--- Top
+*&---------------------------------------------------------------------*
+*&  Include           ZPPPR001_TOP
+*&---------------------------------------------------------------------*
+TABLES mard.
+
+TYPE-POOLS: abap, cntb, icon.
+
+DATA gt_stb TYPE TABLE OF stpox.
+
+TYPES:
+  BEGIN OF ty_output,
+    flag    TYPE xfeld,
+    idnrk   TYPE stpox-idnrk,
+    ojtxp   TYPE stpox-ojtxp,
+    mnglg   TYPE stpox-mnglg,
+    mmein   TYPE stpox-mmein,
+    mtart   TYPE stpox-mtart,
+    lgpro   TYPE stpox-lgpro,
+    lgort   TYPE mard-lgpbe,
+    labst   TYPE labst,
+    dif_dep TYPE labst,
+  END OF ty_output,
+
+  BEGIN OF ty_log,
+    docnum  TYPE bapi2017_gm_head_ret-mat_doc,
+    type    TYPE c,
+    message TYPE string,
+    obj     TYPE stpox-idnrk,
+  END OF ty_log.
+
+DATA: gt_log TYPE TABLE OF ty_log,
+      ls_log LIKE LINE OF gt_log.
+
+DATA gt_output TYPE TABLE OF ty_output.
+DATA gt_marc TYPE TABLE OF marc.
+DATA gt_mard TYPE TABLE OF mard.
+
+DATA: go_alv  TYPE REF TO cl_gui_alv_grid,
+      go_head TYPE REF TO cl_dd_document.
+DATA: go_container     TYPE REF TO cl_gui_container,                        "Container para o cabeçalho
+      go_container_cab TYPE REF TO cl_gui_container,                        "Container para o ALV
+      go_splitter      TYPE REF TO cl_gui_splitter_container.               "Divisão de tela - criação de container dinamicamente
+DATA gt_fcat TYPE lvc_t_fcat.
+
+DATA o_alv TYPE REF TO cl_salv_table.
+
+DATA gt_stpo TYPE TABLE OF stpo.
+
+DATA gv_check.
+
+
+*****************
+"--classe
+*&---------------------------------------------------------------------*
+*&  Include           ZPPPR001_CLS
+*&---------------------------------------------------------------------*
+
+
+CLASS lcl_event_receiver DEFINITION.
+
+  PUBLIC SECTION.
+
+    DATA: v_emeng TYPE emeng,
+          v_matnr TYPE matnr,
+          v_werks TYPE werks_d,
+          v_lgobe TYPE lgobe.
+
+    METHODS constructor
+      IMPORTING i_emeng TYPE emeng
+                i_matnr TYPE matnr
+                i_werks TYPE werks_d
+                i_lgobe TYPE lgobe.
+
+    METHODS
+      handle_toolbar
+                    FOR EVENT toolbar OF cl_gui_alv_grid
+        IMPORTING e_object e_interactive.
+
+    METHODS
+      handle_user_command FOR EVENT user_command OF cl_gui_alv_grid
+        IMPORTING e_ucomm.
+
+    METHODS transferir.
+    METHODS call_log.
+    METHODS imprimir.
+
+ENDCLASS.
+
+CLASS lcl_event_receiver IMPLEMENTATION.
+
+  METHOD constructor.
+    v_emeng =  i_emeng .
+    v_matnr =  i_matnr .
+    v_werks =  i_werks .
+    v_lgobe =  i_lgobe .
+  ENDMETHOD.
+
+  METHOD handle_toolbar.
+    DATA: lv_toolbar TYPE stb_button.
+
+    MOVE 'SEL_ALL' TO lv_toolbar-function.
+*    MOVE ' '(100) TO lv_toolbar-text.
+*    MOVE ' '(100) TO lv_toolbar-quickinfo.
+    lv_toolbar-butn_type = 0.
+    MOVE ' ' TO lv_toolbar-disabled.
+    MOVE icon_select_all   TO lv_toolbar-icon.
+    APPEND lv_toolbar TO e_object->mt_toolbar.
+
+    CLEAR lv_toolbar.
+    lv_toolbar-butn_type = 0.
+    MOVE 'DESEL_ALL' TO lv_toolbar-function.
+*    MOVE ' '(100) TO lv_toolbar-text.
+*    MOVE ' '(100) TO lv_toolbar-quickinfo.
+    MOVE ' ' TO lv_toolbar-disabled.
+    MOVE icon_deselect_all TO lv_toolbar-icon.
+    APPEND lv_toolbar TO e_object->mt_toolbar.
+
+    CLEAR lv_toolbar.
+    lv_toolbar-butn_type = 3.
+    MOVE ' ' TO lv_toolbar-text.
+    APPEND lv_toolbar TO e_object->mt_toolbar.
+
+* Push Button
+    CLEAR lv_toolbar.
+
+    MOVE 'TRANSF' TO lv_toolbar-function.
+    MOVE 'Transferir'(100) TO lv_toolbar-text.
+    MOVE 'Transferir'(100) TO lv_toolbar-quickinfo.
+    MOVE ' ' TO lv_toolbar-disabled.
+    APPEND lv_toolbar TO e_object->mt_toolbar.
+
+    CLEAR lv_toolbar.
+    lv_toolbar-butn_type = 3.
+    MOVE ' ' TO lv_toolbar-text.
+    APPEND lv_toolbar TO e_object->mt_toolbar.
+
+* Push button
+    CLEAR lv_toolbar.
+    MOVE 'IMPRI' TO lv_toolbar-function.
+    MOVE 'Imprimir'(100) TO lv_toolbar-text.
+    MOVE 'Imprimir'(100) TO lv_toolbar-quickinfo.
+    MOVE ' ' TO lv_toolbar-disabled.
+    APPEND lv_toolbar TO e_object->mt_toolbar.
+
+  ENDMETHOD.
+
+  METHOD handle_user_command.
+
+    CASE e_ucomm.
+      WHEN 'TRANSF'.
+        me->transferir( ).
+        me->call_log( ).
+      WHEN 'IMPRI'.
+        me->imprimir( ).
+      WHEN 'SEL_ALL'.
+        LOOP AT gt_output ASSIGNING FIELD-SYMBOL(<fs_output>).
+          <fs_output>-flag = 'X'.
+        ENDLOOP.
+        go_alv->check_changed_data( ).
+        go_alv->refresh_table_display( ).
+      WHEN 'DESEL_ALL'.
+        LOOP AT gt_output ASSIGNING <fs_output>.
+          <fs_output>-flag = ' '.
+        ENDLOOP.
+        go_alv->check_changed_data( ).
+        go_alv->refresh_table_display( ).
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+  METHOD transferir.
+
+    DATA lt_item TYPE TABLE OF bapi2017_gm_item_create.
+    DATA ls_item LIKE LINE OF lt_item.
+    DATA ls_header TYPE bapi2017_gm_head_01.
+    DATA lt_return TYPE TABLE OF bapiret2.
+    DATA lt_output LIKE gt_output.
+    DATA ls_output LIKE LINE OF gt_output.
+    DATA lv_code TYPE bapi2017_gm_code.
+    DATA lv_docnum TYPE bapi2017_gm_head_ret-mat_doc.
+
+    ls_header-pstng_date = sy-datum.
+
+    FREE gt_log.
+
+    lt_output[] = gt_output[].
+    DELETE lt_output WHERE flag <> 'X'.
+
+    IF lt_output IS INITIAL.
+      MESSAGE i398(00) WITH 'Selecionar pelo menos uma linha.'  DISPLAY LIKE 'E'.
+      EXIT.
+    ENDIF.
+
+    SELECT *
+      FROM ztbpp004
+      INTO TABLE @DATA(lt_cent_cust)
+      FOR ALL ENTRIES IN @lt_output
+      WHERE matnr    = @lt_output-idnrk
+        AND werks    = @v_werks
+        AND dep_dest = @v_lgobe.
+
+    LOOP AT lt_output INTO ls_output.
+
+      READ TABLE gt_marc INTO DATA(ls_marc) WITH KEY matnr = ls_output-idnrk "v_matnr
+                                                     werks = v_werks.
+      IF ls_marc-rgekz = '1'.
+
+        lv_code = '04'.
+
+        ls_item-material   = ls_output-idnrk."v_matnr.
+        ls_item-plant      = v_werks.
+        ls_item-stge_loc   = v_lgobe.
+        ls_item-move_type  = '311'.
+        ls_item-entry_qnt  = ls_output-mnglg.
+        ls_item-move_mat   = ls_output-idnrk.
+        ls_item-move_plant = v_werks.
+        ls_item-move_stloc = ls_output-lgpro.
+        APPEND ls_item TO lt_item.
+
+        CALL FUNCTION 'BAPI_GOODSMVT_CREATE'
+          EXPORTING
+            goodsmvt_header  = ls_header
+            goodsmvt_code    = lv_code
+          IMPORTING
+            materialdocument = lv_docnum
+          TABLES
+            goodsmvt_item    = lt_item
+            return           = lt_return.
+        COMMIT WORK AND WAIT.
+
+        IF lv_docnum IS NOT INITIAL.
+          ls_log-message = | Documetno { lv_docnum } criado com sucesso. |.
+          ls_log-type    = 'S'.
+          ls_log-obj     = ls_output-idnrk.
+          ls_log-docnum  = lv_docnum.
+          APPEND ls_log TO gt_log.
+          CLEAR ls_log.
+        ENDIF.
+
+      ELSEIF ls_marc-rgekz = space.
+
+        lv_code = '03'.
+
+        ls_item-material   = ls_output-idnrk. "v_matnr.
+        ls_item-plant      = v_werks.
+        ls_item-stge_loc   = v_lgobe.
+        ls_item-move_type  = '201'.
+        ls_item-entry_qnt  = ls_output-mnglg.
+*        ls_item-move_stloc = ls_output-lgpro.
+        READ TABLE lt_cent_cust INTO DATA(ls_cent_cust) WITH KEY matnr    = ls_output-idnrk
+                                                                 werks    = v_werks
+                                                                 dep_dest = v_lgobe.
+        IF sy-subrc <> 0.
+          ls_log-message = |Não foi cadastrado centro de custo na transação ZTPP002 para o material { ls_output-idnrk }|.
+          ls_log-type    = 'E'.
+          ls_log-obj     = ls_output-idnrk.
+          ls_log-docnum  = lv_docnum.
+          APPEND ls_log TO gt_log.
+          CLEAR ls_log.
+          CONTINUE.
+        ENDIF.
+        ls_item-costcenter = ls_cent_cust-cent_cust.
+        APPEND ls_item TO lt_item.
+
+        CALL FUNCTION 'BAPI_GOODSMVT_CREATE'
+          EXPORTING
+            goodsmvt_header  = ls_header
+            goodsmvt_code    = lv_code
+          IMPORTING
+            materialdocument = lv_docnum
+          TABLES
+            goodsmvt_item    = lt_item
+            return           = lt_return.
+        COMMIT WORK AND WAIT.
+
+        IF lv_docnum IS NOT INITIAL.
+          ls_log-message = | Documetno { lv_docnum } criado com sucesso. |.
+          ls_log-type    = 'S'.
+          ls_log-obj     = ls_output-idnrk.
+          ls_log-docnum  = lv_docnum.
+          APPEND ls_log TO gt_log.
+          CLEAR ls_log.
+        ENDIF.
+
+      ENDIF.
+
+      LOOP AT lt_return INTO DATA(ls_return) WHERE type = 'E' OR type = 'S'.
+        ls_log-type    = ls_return-type.
+        ls_log-message = ls_return-message.
+        ls_log-obj     = ls_output-idnrk.
+        ls_log-docnum  = lv_docnum.
+        APPEND ls_log TO gt_log.
+      ENDLOOP.
+
+*      IF lv_docnum IS NOT INITIAL.
+*        MESSAGE | Documetno { lv_docnum } criado com sucesso. | TYPE 'I' DISPLAY LIKE 'S'.
+*      ENDIF.
+
+      FREE: lt_return, lt_item.
+      CLEAR: ls_item, lv_docnum, ls_marc.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD call_log.
+
+    DATA lr_table     TYPE REF TO cl_salv_table.
+    DATA lr_functions TYPE REF TO cl_salv_functions.
+    DATA lr_display   TYPE REF TO cl_salv_display_settings.
+    DATA columns      TYPE REF TO cl_salv_columns_table.
+    DATA column       TYPE REF TO cl_salv_column.
+
+    CHECK gt_log IS NOT INITIAL.
+
+    cl_salv_table=>factory(
+       IMPORTING
+       r_salv_table = lr_table
+       CHANGING
+       t_table      = gt_log
+     ).
+
+    columns = lr_table->get_columns( ).
+    columns->set_optimize( ).
+
+    column = columns->get_column( columnname = 'TYPE' ).
+    column->set_short_text( '' ).
+    column->set_medium_text( '' ).
+    column->set_long_text( 'Tipo' ).
+    column->set_alignment( 3 ).
+
+    column = columns->get_column( columnname = 'MESSAGE' ).
+    column->set_short_text( '' ).
+    column->set_medium_text( '' ).
+    column->set_long_text( 'Descrição' ).
+    column->set_alignment( 3 ).
+
+    lr_functions = lr_table->get_functions( ).
+    lr_functions->set_all( abap_true ).
+
+    lr_display = lr_table->get_display_settings( ).
+    lr_display->set_list_header( 'Log de execução' ).
+    lr_display->set_striped_pattern( abap_true ).
+
+    lr_table->display( ).
+
+  ENDMETHOD.
+
+  METHOD imprimir.
+
+    DATA: lt_lines    TYPE TABLE OF tline,
+          ls_print    TYPE lvc_s_prnt, "slis_print_alv,
+          lt_otf      TYPE TABLE OF itcoo, "OCCURS 1000 WITH HEADER LINE,
+          lt_pdf      TYPE TABLE OF tline , "100 WITH HEADER LINE,
+          lt_pdf_data TYPE TABLE OF tline, "WITH HEADER LINE,
+          lt_pdf_hex  TYPE solix_tab,
+          lt_record   TYPE  TABLE OF solisti1, " OCCURS 0 WITH HEADER LINE,
+          lt_fcat     TYPE lvc_t_fcat.
+
+    DATA lt_print_out LIKE gt_output.
+    DATA: ls_params TYPE pri_params.
+
+    lt_print_out = gt_output.
+    DELETE lt_print_out WHERE flag <> 'X'.
+
+    DATA: lv_spool                TYPE tsp01-rqident,
+          lv_spool_txt            TYPE char10,
+          lv_program              TYPE sy-repid VALUE sy-repid,
+          lv_filename             TYPE sood-objdes,
+          lv_filesize             TYPE i,
+          lv_otf                  TYPE  xstring,
+          lv_numbytes             TYPE i,
+          lv_pdfspoolid           TYPE tsp01-rqident,
+          lv_jobname              TYPE tbtcjob-jobname,
+          lv_jobcount             TYPE tbtcjob-jobcount,
+          lv_get_size_from_format TYPE c,
+          lv_bin_file             TYPE xstring,
+          lv_pdf                  TYPE string,
+          lv_valid                TYPE c,
+          lv_act_fields           TYPE char12.
+
+    ls_print-print              = 'X'.
+
+    CALL FUNCTION 'GET_PRINT_PARAMETERS'
+      EXPORTING
+        in_parameters          = ls_params
+        layout                 = 'X_65_255'
+        line_count             = 65
+        line_size              = 255
+        no_dialog              = abap_false
+      IMPORTING
+        out_parameters         = ls_params
+        valid                  = lv_valid
+      EXCEPTIONS
+        archive_info_not_found = 1
+        invalid_print_params   = 2
+        invalid_archive_params = 3
+        OTHERS                 = 4.
+
+    MOVE-CORRESPONDING ls_params TO ls_print-print_ctrl-pri_params.
+    ls_print-print_ctrl-pri_params-pdest = 'LP01'.
+    NEW-PAGE PRINT ON PARAMETERS ls_params NO DIALOG.
+
+    DATA: ls_variant TYPE disvariant.
+    ls_variant-report = sy-repid.
+
+    DATA(ls_layo) = VALUE lvc_s_layo( cwidth_opt = 'A'
+                                       zebra      = abap_true
+                                       sel_mode   = 'B' ).
+
+    go_alv->set_table_for_first_display(
+      EXPORTING
+          i_structure_name              = 'GT_OUTPUT'
+          i_save                        = 'A'
+          is_layout                     = ls_layo
+          is_variant                    = ls_variant
+          is_print                      = ls_print
+      CHANGING
+          it_outtab                     = gt_output
+          it_fieldcatalog               = gt_fcat
+    EXCEPTIONS
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        OTHERS                        = 4
+  ).
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lcl_matnr_data DEFINITION.
+  PUBLIC SECTION.
+
+    DATA: v_emeng TYPE emeng,
+          v_matnr TYPE matnr,
+          v_werks TYPE werks_d,
+          v_lgobe TYPE lgobe,
+          v_roh,
+          v_halb.
+
+    METHODS constructor
+      IMPORTING i_emeng TYPE emeng
+                i_matnr TYPE matnr
+                i_werks TYPE werks_d
+                i_lgobe TYPE lgobe
+                i_roh   TYPE c
+                i_halb  TYPE c.
+
+    METHODS select_data
+      RETURNING VALUE(e_tab) LIKE gt_stb.
+
+    METHODS fill_output.
+    METHODS splitter_creation.
+    METHODS header_creation.
+    METHODS fieldcat.
+    METHODS display_alv.
+
+ENDCLASS.
+
+CLASS lcl_matnr_data IMPLEMENTATION.
+
+  METHOD constructor.
+    v_emeng =  i_emeng .
+    v_matnr =  i_matnr .
+    v_werks =  i_werks .
+    v_lgobe =  i_lgobe .
+    v_roh =  i_roh .
+    v_halb =  i_halb .
+  ENDMETHOD.
+
+  METHOD select_data.
+
+    CALL FUNCTION 'CS_BOM_EXPL_MAT_V2'
+      EXPORTING
+        capid                 = 'PP01'
+        datuv                 = sy-datum
+        emeng                 = me->v_emeng
+        mktls                 = 'X'
+        mehrs                 = 'X'
+        mtnrv                 = me->v_matnr
+        svwvo                 = 'X'
+        werks                 = me->v_werks
+        vrsvo                 = 'X'
+      TABLES
+        stb                   = e_tab
+      EXCEPTIONS
+        alt_not_found         = 1
+        call_invalid          = 2
+        material_not_found    = 3
+        missing_authorization = 4
+        no_bom_found          = 5
+        no_plant_data         = 6
+        no_suitable_bom_found = 7
+        conversion_error      = 8
+        OTHERS                = 9.
+    IF e_tab IS NOT INITIAL.
+      IF v_roh IS INITIAL AND v_halb IS INITIAL.
+        MESSAGE s398(00) WITH  'Selecionar tipo de material.' DISPLAY LIKE 'E'.
+        EXIT.
+      ELSEIF v_roh IS NOT INITIAL AND v_halb IS INITIAL.
+        DELETE e_tab WHERE mtart <> 'ROH'.
+      ELSEIF v_roh IS INITIAL AND v_halb IS NOT INITIAL..
+        DELETE e_tab WHERE mtart <> 'HALB'.
+      ELSE.
+        DELETE e_tab WHERE mtart <> 'HALB' AND mtart <> 'ROH'.
+      ENDIF.
+
+      SELECT *
+        FROM marc
+        INTO TABLE gt_marc
+      FOR ALL ENTRIES IN e_tab
+        WHERE matnr = e_tab-idnrk
+           AND werks = e_tab-werks.
+*          AND matnr = v_matnr.
+
+      SELECT matnr
+             werks
+             lgort
+             labst
+             lgpbe
+        FROM mard
+        INTO CORRESPONDING FIELDS OF TABLE gt_mard
+        FOR ALL ENTRIES IN e_tab
+        WHERE  matnr = e_tab-idnrk
+          AND werks = v_werks "e_tab-werks
+          AND lgort = v_lgobe."e_tab-lgort.
+
+      SELECT *
+        FROM stpo
+        INTO TABLE gt_stpo
+        FOR ALL ENTRIES IN e_tab
+          WHERE stlnr = e_tab-stlnr
+            AND stlkn = e_tab-stlkn.
+
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD fill_output.
+
+    DATA: ls_output LIKE LINE OF gt_output.
+
+    LOOP AT gt_stb INTO DATA(ls_stb).
+      MOVE-CORRESPONDING ls_stb TO ls_output.
+
+
+      CALL FUNCTION 'CONVERSION_EXIT_CUNIT_OUTPUT'
+        EXPORTING
+          input          = ls_output-mmein
+          language       = sy-langu
+        IMPORTING
+*         LONG_TEXT      =
+          output         = ls_output-mmein
+*         SHORT_TEXT     =
+        EXCEPTIONS
+          unit_not_found = 1
+          OTHERS         = 2.
+
+      ls_output-mnglg = ls_stb-mnglg.
+
+      "--- Regra atual.
+      READ TABLE gt_stpo INTO DATA(ls_stpo) WITH KEY stlnr = ls_stb-stlnr
+                                                     stlkn = ls_stb-stlkn.
+
+      ls_output-lgpro = COND #( WHEN ls_stpo-lgort IS NOT INITIAL
+                                THEN ls_stpo-lgort
+                                ELSE ls_stb-lgpro ).
+
+      IF ls_output-lgpro IS INITIAL.
+        MESSAGE i398(00) DISPLAY LIKE 'E' WITH |{ TEXT-000 }| & | | & |{ ls_stb-idnrk }| .
+      ENDIF.
+
+      READ TABLE gt_mard INTO DATA(ls_mard) WITH KEY matnr = ls_stb-idnrk
+                                                     werks = v_werks "ls_stb-werks
+                                                     lgort = v_lgobe. "ls_stb-lgort
+      IF sy-subrc = 0.
+        ls_output-lgort = ls_mard-lgpbe.
+        ls_output-labst = ls_mard-labst.
+        ls_output-dif_dep = ls_mard-labst - ls_output-mnglg.
+      ENDIF.
+
+      APPEND ls_output TO gt_output.
+
+      CLEAR: ls_output, ls_stpo, mard.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD splitter_creation.
+
+    IF go_splitter IS INITIAL.
+
+      "Cria o objeto Split Container para inserir o ALV, utilizando duas linhas
+      CREATE OBJECT go_splitter
+        EXPORTING
+          parent  = cl_gui_container=>default_screen
+          rows    = 2
+          columns = 1
+          metric  = '0001'.
+
+      "Define o tamanho da linha 1
+      CALL METHOD go_splitter->set_row_height
+        EXPORTING
+          id                = 1
+          height            = 3
+        EXCEPTIONS
+          cntl_error        = 1
+          cntl_system_error = 2
+          OTHERS            = 3.
+
+      "Define o tamanho da linha 2
+      CALL METHOD go_splitter->set_row_height
+        EXPORTING
+          id                = 2
+          height            = 13
+        EXCEPTIONS
+          cntl_error        = 1
+          cntl_system_error = 2
+          OTHERS            = 3.
+
+    ENDIF.
+
+    CALL METHOD go_splitter->get_container
+      EXPORTING
+        row       = 1
+        column    = 1
+      RECEIVING
+        container = go_container.
+
+*    go_container         = go_splitter->get_container( row = 1 column = 1 ).
+    go_container_cab     = go_splitter->get_container( row = 2 column = 1 ).
+
+    me->header_creation( ).
+
+  ENDMETHOD.
+
+  METHOD header_creation.
+
+    "--- cria o cabeçalho do relatório.
+    DATA: editor       TYPE REF TO cl_gui_textedit.
+
+    SELECT SINGLE maktx
+      INTO @DATA(v_maktx)
+      FROM makt
+      WHERE matnr = @v_matnr
+        AND spras = 'P'.
+
+* Declara tabela interna
+    DATA: linha(256),
+          texto_tab LIKE STANDARD TABLE OF linha.
+
+    APPEND linha TO texto_tab.
+    linha = |Material: { v_matnr }|.
+    APPEND linha TO texto_tab.
+
+    linha = | Cent/Util/Alt: { v_werks }| & | / { '1' }| & |{ '01' }|.
+    APPEND linha TO texto_tab.
+
+    linha = | Denominação: { v_maktx }|.
+    APPEND linha TO texto_tab.
+
+    linha = | Qtd. Base (PC): { v_emeng }|.
+    APPEND linha TO texto_tab.
+
+    CREATE OBJECT editor
+      EXPORTING
+        wordwrap_mode              = editor->wordwrap_at_fixed_position
+        wordwrap_position          = 30
+        wordwrap_to_linebreak_mode = editor->true
+        parent                     = go_container
+      EXCEPTIONS
+        OTHERS                     = 1.
+
+* Adiciona texto
+    CALL METHOD editor->set_text_as_stream
+      EXPORTING
+        text = texto_tab.
+
+    CALL METHOD editor->set_enable
+      EXPORTING
+        enable = ''.
+
+    CALL METHOD editor->set_toolbar_mode
+      EXPORTING
+        toolbar_mode = '0'.
+
+    CALL METHOD editor->set_statusbar_mode
+      EXPORTING
+        statusbar_mode = cl_gui_textedit=>false.
+
+  ENDMETHOD.
+
+  METHOD fieldcat.
+
+    DATA: lo_table       TYPE REF TO cl_abap_tabledescr,
+          lo_struct      TYPE REF TO cl_abap_structdescr,
+          lt_comp        TYPE abap_component_tab,
+          ls_comp        TYPE abap_componentdescr,
+          lv_coltext(30) TYPE c,
+          lv_checkbox.
+
+    lo_table ?= cl_abap_typedescr=>describe_by_data( gt_output ).
+    lo_struct ?= lo_table->get_table_line_type( ).
+    lt_comp = lo_struct->get_components( ).
+
+    LOOP AT lt_comp INTO ls_comp.
+      CLEAR lv_checkbox.
+
+      CASE ls_comp-name.
+        WHEN 'FLAG'.
+          lv_coltext = 'Linha'.
+          lv_checkbox = 'X'.
+        WHEN 'IDNRK'.
+          lv_coltext = 'Obj'.
+        WHEN 'OJTXP'.
+          lv_coltext = 'Texto breve do Objeto'.
+        WHEN 'MNGLG'.
+          lv_coltext = 'Qtd.'.
+        WHEN 'MMEIN'.
+          lv_coltext = 'UM'.
+        WHEN 'MTART'.
+          lv_coltext = 'Tipo de material'.
+        WHEN 'LGPRO'.
+          lv_coltext = 'Depósito destino'.
+        WHEN 'LGORT'.
+          lv_coltext = 'Posição no depósito'.
+        WHEN 'LABST'.
+          lv_coltext = 'Qtd. depósito'.
+        WHEN 'DIF_DEP'.
+          lv_coltext = 'Diferença entre depósitos'.
+      ENDCASE.
+
+      DATA(ls_fcat) = VALUE lvc_s_fcat( fieldname = ls_comp-name
+                                        coltext   = lv_coltext
+                                        checkbox  = lv_checkbox
+                                        edit      = lv_checkbox
+                                        col_opt   = 'X' ).
+      APPEND ls_fcat TO gt_fcat.
+      CLEAR ls_fcat.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD display_alv.
+    DATA: lv_event_receiver TYPE REF TO lcl_event_receiver,
+          lv_alv_grid       TYPE REF TO cl_gui_alv_grid.
+
+    DATA: ls_variant TYPE disvariant.
+    ls_variant-report = sy-repid.
+
+    DATA(ls_layo) = VALUE lvc_s_layo( cwidth_opt = 'A'
+                                       zebra      = abap_true
+                                       sel_mode   = 'A'
+                                       no_rowmark = 'X' ).
+
+    IF go_alv IS INITIAL.
+
+      lv_event_receiver = NEW #( i_emeng = v_emeng
+                                 i_matnr = v_matnr
+                                 i_werks = v_werks
+                                 i_lgobe = v_lgobe ).
+
+      go_alv            = NEW #( i_parent = go_container_cab ).
+
+      SET HANDLER lv_event_receiver->handle_toolbar FOR go_alv.
+      SET HANDLER lv_event_receiver->handle_user_command FOR go_alv.
+
+      me->fieldcat( ).
+
+*--------------------------------------------------------------------*
+      DATA : tool_wa_exclude  TYPE ui_func.
+      DATA : tool_it_exclude  TYPE TABLE OF ui_func.
+
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_loc_delete_row.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_detail.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_loc_copy_row.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_loc_cut.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_check.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_loc_copy.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_loc_paste.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_loc_undo.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_loc_delete_row.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_loc_insert_row.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_loc_move_row.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_print.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_refresh.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_loc_append_row.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_loc_paste_new_row.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_deselect_all.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_select_all.
+      APPEND tool_wa_exclude  TO tool_it_exclude .
+*      tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_excl_all.
+*      APPEND tool_wa_exclude  TO tool_it_exclude .
+
+*--------------------------------------------------------------------*
+
+      go_alv->set_table_for_first_display(
+        EXPORTING
+            i_structure_name              = 'GT_OUTPUT'
+            i_save                        = 'A'
+            is_layout                     = ls_layo
+            is_variant                    = ls_variant
+               it_toolbar_excluding          = tool_it_exclude
+        CHANGING
+            it_outtab                     = gt_output
+            it_fieldcatalog               = gt_fcat
+      EXCEPTIONS
+          invalid_parameter_combination = 1
+          program_error                 = 2
+          too_many_lines                = 3
+          OTHERS                        = 4
+    ).
+
+* atualiza o alv oo
+      go_alv->refresh_table_display(
+        EXCEPTIONS
+          finished       = 1
+          OTHERS         = 2
+      ).
+
+      IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE 'E' NUMBER sy-msgno WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+    ENDIF.
+
+  ENDMETHOD.
+
+ENDCLASS.
+******************
+"--- Screen
+
+*&---------------------------------------------------------------------*
+*&  Include           ZPPPR001_SCR
+*&---------------------------------------------------------------------*
+
+SELECTION-SCREEN SKIP.
+
+PARAMETERS: p_matnr TYPE matnr OBLIGATORY,
+            p_werks TYPE werks_d OBLIGATORY.
+
+SELECTION-SCREEN SKIP.
+PARAMETERS p_lgobe TYPE lgobe OBLIGATORY.
+SELECTION-SCREEN SKIP.
+
+SELECTION-SCREEN: BEGIN OF LINE.
+SELECTION-SCREEN COMMENT 1(20) comm2 MODIF ID mg1.
+
+PARAMETERS p_roh  AS CHECKBOX DEFAULT 'X'.
+SELECTION-SCREEN: COMMENT 24(15) TEXT-s23.
+
+PARAMETERS p_halb AS CHECKBOX.
+SELECTION-SCREEN: COMMENT 42(20) TEXT-s15.
+SELECTION-SCREEN END OF LINE.
+
+SELECTION-SCREEN SKIP.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
+PARAMETERS p_emeng TYPE emeng OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK b2.
+
+AT SELECTION-SCREEN OUTPUT.
+  comm2 = 'Tipo de material:'.
+*  comm2 = 'Select one'.
+  LOOP AT SCREEN INTO DATA(screen_wa).
+    IF screen_wa-group1 = 'MG1'.
+      screen_wa-intensified = '1'.
+      MODIFY screen FROM screen_wa.
+    ENDIF.
+
+  ENDLOOP.

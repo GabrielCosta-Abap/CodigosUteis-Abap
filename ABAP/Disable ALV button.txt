@@ -1,0 +1,20 @@
+data : tool_wa_exclude  type ui_func.
+
+  
+  tool_wa_exclude  = cl_gui_alv_grid=>mc_fc_loc_delete_row.
+ append tool_wa_exclude  to tool_it_exclude .
+ 
+
+
+
+  call method grid2->set_table_for_first_display
+    exporting
+      it_toolbar_excluding          = tool_it_exclude
+    changing
+      it_outtab                            = it_ekpo
+      it_fieldcatalog                    = it_fcat
+    exceptions
+      invalid_parameter_combination = 1
+      program_error                           = 2
+      too_many_lines                         = 3
+      others                                        = 4.

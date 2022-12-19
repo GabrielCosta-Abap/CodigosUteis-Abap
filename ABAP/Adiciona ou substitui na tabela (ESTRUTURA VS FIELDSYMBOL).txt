@@ -1,0 +1,80 @@
+tables: mara, makt, mard, mbew.
+
+types:
+  begin of ty_tipo,
+
+    werks type mard-werks,
+    matnr type mara-matnr,
+    labst type mard-labst,
+    maktx type makt-maktx,
+    verpr type mbew-verpr,
+    mtart type mara-mtart,
+
+  end of ty_tipo.
+
+data: gt_join type table of ty_tipo,
+      ls_join like line of gt_join.
+
+select-options t_werks for mard-werks.
+select-options t_matnr for mard-matnr.
+
+
+select mard~werks,
+       mara~matnr,
+       mard~labst,
+*       makt~maktx,
+       mbew~verpr,
+       mara~mtart
+from mara
+inner join mard on ( mard~matnr = mara~matnr
+               and   mard~labst > 0 )
+*inner join makt on ( makt~matnr = mara~matnr )
+inner join mbew on ( mbew~matnr = mara~matnr
+               and   mbew~bwkey = mard~werks )
+into table @data(t_tab1)
+where ( mard~werks in @t_werks
+  and   mard~matnr in @t_matnr ).
+*  and   mara~mtart = 'HAWA' ).
+
+
+select maktx,
+       matnr
+  from makt
+   into table @data(t_tab2)
+  for all entries in @t_tab1
+  where matnr = @t_tab1-matnr.
+
+loop at t_tab1 assigning field-symbol(<ls_tab1>).
+
+  loop at t_tab2 assigning field-symbol(<ls_tab2>) where matnr = <ls_tab1>-matnr.
+
+    read table gt_join assigning field-symbol(<ls_join>) with key matnr = <ls_tab2>-matnr
+                                                                  werks = <ls_tab1>-werks.
+    if sy-subrc is not initial.
+
+      ls_join-werks = <ls_tab1>-werks.
+      ls_join-matnr = <ls_tab1>-matnr.
+      ls_join-labst = <ls_tab1>-labst.
+      ls_join-maktx = <ls_tab2>-maktx.
+      ls_join-verpr = <ls_tab1>-verpr.
+      ls_join-mtart = <ls_tab1>-mtart.
+      append ls_join to gt_join.
+      clear ls_join.
+
+    else.
+
+      <ls_join>-werks = <ls_tab1>-werks.
+      <ls_join>-matnr = <ls_tab1>-matnr.
+      <ls_join>-labst = <ls_tab1>-labst.
+      <ls_join>-maktx = <ls_tab2>-maktx.
+      <ls_join>-verpr = <ls_tab1>-verpr.
+      <ls_join>-mtart = <ls_tab1>-mtart.
+
+    endif.
+  endloop.
+endloop.
+
+sort gt_join by matnr.
+*--------------------------------------------------------------------**
+break-point.
+*--------------------------------------------------------------------**
