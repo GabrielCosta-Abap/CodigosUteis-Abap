@@ -1,0 +1,296 @@
+*&---------------------------------------------------------------------*
+*& Report ZMEGA
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zmega.
+
+TYPES: BEGIN OF ty_file,
+         col1 TYPE string,
+         col2 TYPE string,
+         col3 TYPE string,
+         col4 TYPE string,
+         col5 TYPE string,
+         col6 TYPE string,
+         col7 TYPE string,
+         col8 TYPE string,
+       END OF ty_file,
+       tt_file TYPE TABLE OF ty_file.
+
+DATA: lt_numeros TYPE TABLE OF ty_file.
+DATA: i_numeros TYPE TABLE OF ty_file.
+DATA: lt_jogada TYPE TABLE OF ty_file.
+
+PARAMETERS p_path TYPE rlgrap-filename.
+
+CLASS lcl_file_handler DEFINITION.
+  PUBLIC SECTION.
+
+    CLASS-METHODS:
+      get_excel_local IMPORTING VALUE(iv_file)   TYPE rlgrap-filename
+                      CHANGING  cv_bin_data      TYPE xstring
+                      RETURNING VALUE(rv_return) TYPE abap_bool,
+
+      fill_tables    IMPORTING iv_file          TYPE rlgrap-filename
+                               iv_bin_data      TYPE xstring
+                     CHANGING  ct_table         TYPE STANDARD TABLE
+                               ct_table_cline   TYPE STANDARD TABLE
+                     RETURNING VALUE(rv_return) TYPE abap_bool,
+
+      ordena_numeros CHANGING ct_numeros TYPE tt_file.
+
+ENDCLASS.
+
+CLASS lcl_file_handler IMPLEMENTATION.
+
+  METHOD get_excel_local.
+
+    DATA: lv_file     TYPE string,
+          lv_filesize TYPE w3param-cont_len,
+          lt_bin_data TYPE w3mimetabtype.
+
+    "Read File and GUI upload
+    lv_file = iv_file.
+    cl_gui_frontend_services=>gui_upload( EXPORTING
+                                            filename  = lv_file
+                                            filetype  = 'BIN'
+                                          IMPORTING
+                                            filelength = lv_filesize
+                                          CHANGING
+                                            data_tab = lt_bin_data
+                                          EXCEPTIONS
+                                            file_open_error         = 1
+                                            file_read_error         = 2
+                                            no_batch                = 3
+                                            gui_refuse_filetransfer = 4
+                                            invalid_type            = 5
+                                            no_authority            = 6
+                                            unknown_error           = 7
+                                            bad_data_format         = 8
+                                            header_not_allowed      = 9
+                                            separator_not_allowed   = 10
+                                            header_too_long         = 11
+                                            unknown_dp_error        = 12
+                                            access_denied           = 13
+                                            dp_out_of_memory        = 14
+                                            disk_full               = 15
+                                            dp_timeout              = 16
+                                            not_supported_by_gui    = 17
+                                            error_no_gui            = 18
+                                            OTHERS                  = 19 ).
+    IF lt_bin_data[] IS INITIAL.
+      MESSAGE TEXT-142 TYPE 'S' DISPLAY LIKE 'E'.  " Falha na leitura do Excel. Verificar Layout!
+      RETURN.
+    ENDIF.
+
+    "Solix -> xstring
+    cv_bin_data = cl_bcs_convert=>solix_to_xstring( it_solix = lt_bin_data ).
+    IF cv_bin_data IS INITIAL.
+      MESSAGE TEXT-142 TYPE 'S' DISPLAY LIKE 'E'.  " Falha na leitura do Excel. Verificar Layout!
+      RETURN.
+    ENDIF.
+
+    rv_return = abap_true.
+
+  ENDMETHOD.
+
+  METHOD fill_tables.
+
+    DATA: lv_file               TYPE string,
+          lt_worksheet_names    TYPE if_fdt_doc_spreadsheet=>t_worksheet_names,
+          lo_tabledescr_ref     TYPE REF TO cl_abap_tabledescr,
+          lo_descr_ref_planilha TYPE REF TO cl_abap_structdescr,
+          lo_descr_ref_tabela   TYPE REF TO cl_abap_structdescr.
+
+    FIELD-SYMBOLS <fs_t_worksheet> TYPE ANY TABLE.
+
+    lv_file = iv_file.
+    TRY.
+
+        DATA(lo_excel) = NEW cl_fdt_xl_spreadsheet( document_name = lv_file
+                                                    xdocument     = iv_bin_data ).
+
+        "Get first worksheet name
+        lo_excel->if_fdt_doc_spreadsheet~get_worksheet_names( IMPORTING worksheet_names = lt_worksheet_names ).
+        IF lines( lt_worksheet_names ) GT 0.
+
+          "First worksheet ref to itab
+          DATA(lo_worksheet_itab) = lo_excel->if_fdt_doc_spreadsheet~get_itab_from_worksheet( lt_worksheet_names[ 1 ] ).
+
+          "Ref to generic field symbol (excel data)
+          ASSIGN lo_worksheet_itab->* TO <fs_t_worksheet>.
+          lo_tabledescr_ref           ?= cl_abap_typedescr=>describe_by_data( <fs_t_worksheet> ).
+          lo_descr_ref_planilha       ?= lo_tabledescr_ref->get_table_line_type( ).
+          lo_tabledescr_ref           ?= cl_abap_typedescr=>describe_by_data( ct_table ).
+          lo_descr_ref_tabela         ?= lo_tabledescr_ref->get_table_line_type( ).
+
+          DATA(lv_colunas) = 8. " Somente as 6 primeiras colunas da planilha são relevantes
+
+          LOOP AT <fs_t_worksheet> ASSIGNING FIELD-SYMBOL(<fs_worksheet>).
+
+            CHECK sy-tabix GT 7. "Ignora cabeçalho
+
+            APPEND INITIAL LINE TO ct_table ASSIGNING FIELD-SYMBOL(<fs_table>).
+            DATA(lv_tabix) = sy-tabix.
+            DO lv_colunas TIMES.
+
+              READ TABLE lo_descr_ref_planilha->components[] ASSIGNING FIELD-SYMBOL(<fs_comp_planilha>) INDEX sy-index.
+              READ TABLE lo_descr_ref_tabela->components[]   ASSIGNING FIELD-SYMBOL(<fs_comp_tabela>)   INDEX sy-index.
+              ASSIGN COMPONENT <fs_comp_planilha>-name OF STRUCTURE <fs_worksheet> TO FIELD-SYMBOL(<fs_campo_planilha>).
+              ASSIGN COMPONENT <fs_comp_tabela>-name   OF STRUCTURE <fs_table>     TO FIELD-SYMBOL(<fs_campo_tabela>).
+              <fs_campo_tabela> = <fs_campo_planilha>.
+
+            ENDDO.
+            IF <fs_table> IS INITIAL.
+
+              "Elimina linhas em branco
+              DELETE ct_table INDEX lv_tabix.
+
+            ENDIF.
+
+          ENDLOOP.
+          IF ct_table[] IS INITIAL.
+
+            MESSAGE TEXT-142 TYPE 'S' DISPLAY LIKE 'E'.  " Falha na leitura do Excel. Verificar Layout!
+            RETURN.
+
+          ELSE.
+
+            " Create dynamic work area and assign to FS
+            DATA lv_dy_cline TYPE REF TO data.
+            CREATE DATA lv_dy_cline LIKE LINE OF ct_table_cline.
+            ASSIGN lv_dy_cline->* TO FIELD-SYMBOL(<fs_table_cline>).
+            LOOP AT ct_table ASSIGNING <fs_table>.
+
+              lv_tabix = sy-tabix + 1. " Linha dos itens da planilha
+              MOVE-CORRESPONDING <fs_table> TO <fs_table_cline>.
+              INSERT <fs_table_cline> INTO TABLE ct_table_cline.
+
+            ENDLOOP.
+
+          ENDIF.
+
+        ENDIF.
+
+      CATCH cx_root INTO DATA(e_text).
+        MESSAGE e_text->get_text( ) TYPE 'S' DISPLAY LIKE 'E'.
+        RETURN.
+
+    ENDTRY.
+    rv_return = abap_true.
+
+  ENDMETHOD.
+
+  METHOD ordena_numeros.
+
+    " ordena numeros.
+    DATA lt_sort TYPE TABLE OF i.
+    LOOP AT ct_numeros ASSIGNING FIELD-SYMBOL(<ls_numeros>).
+
+      APPEND: <ls_numeros>-col3 TO lt_sort,
+              <ls_numeros>-col4 TO lt_sort,
+              <ls_numeros>-col5 TO lt_sort,
+              <ls_numeros>-col6 TO lt_sort,
+              <ls_numeros>-col7 TO lt_sort,
+              <ls_numeros>-col8 TO lt_sort.
+
+      SORT lt_sort.
+
+      READ TABLE lt_sort INDEX 1 INTO <ls_numeros>-col3.
+      READ TABLE lt_sort INDEX 2 INTO <ls_numeros>-col4.
+      READ TABLE lt_sort INDEX 3 INTO <ls_numeros>-col5.
+      READ TABLE lt_sort INDEX 4 INTO <ls_numeros>-col6.
+      READ TABLE lt_sort INDEX 5 INTO <ls_numeros>-col7.
+      READ TABLE lt_sort INDEX 6 INTO <ls_numeros>-col8.
+
+      FREE lt_sort.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+START-OF-SELECTION.
+  DATA ls_numeros TYPE ty_file.
+  DATA lv_stop.
+  DATA colnum TYPE i.
+  DATA lv_random TYPE i.
+  DATA lv_bin_data TYPE xstring.
+
+  lcl_file_handler=>get_excel_local(
+    EXPORTING
+      iv_file     = p_path
+    CHANGING
+      cv_bin_data = lv_bin_data ).
+
+  lcl_file_handler=>fill_tables(
+  EXPORTING
+    iv_file        = p_path
+    iv_bin_data    = lv_bin_data
+  CHANGING
+    ct_table       = i_numeros
+    ct_table_cline = lt_numeros ).
+
+  lcl_file_handler=>ordena_numeros(
+    CHANGING
+      ct_numeros = lt_numeros ).
+
+  DO.
+
+    FREE lt_jogada.
+    colnum = 2.
+    DO 6 TIMES.
+
+      ADD 1 TO colnum.
+      DATA(colname) = |COL{ colnum }|.
+
+*      DATA(lv_random) = cl_abap_random_int=>create( min = 1 max = 60 )->get_next( ).
+      DO.
+        CALL FUNCTION 'QF05_RANDOM_INTEGER'
+          EXPORTING
+            ran_int_min = 1
+            ran_int_max = 60
+          IMPORTING
+            ran_int     = lv_random.
+
+        IF NOT lv_random = ls_numeros-col3 AND NOT lv_random = ls_numeros-col4 AND NOT lv_random = ls_numeros-col5 AND NOT lv_random = ls_numeros-col6 AND NOT lv_random = ls_numeros-col7 AND NOT lv_random = ls_numeros-col8.
+          EXIT.
+        ENDIF.
+      ENDDO.
+
+      ASSIGN COMPONENT colname OF STRUCTURE ls_numeros TO FIELD-SYMBOL(<lv_number>).
+      <lv_number> = lv_random.
+
+    ENDDO.
+    APPEND ls_numeros TO lt_jogada.
+
+    lcl_file_handler=>ordena_numeros(
+      CHANGING
+        ct_numeros = lt_jogada ).
+
+    READ TABLE lt_jogada ASSIGNING FIELD-SYMBOL(<ls_jogada>) INDEX 1.
+    LOOP AT lt_numeros ASSIGNING FIELD-SYMBOL(<ls_numeros>).
+
+      READ TABLE lt_numeros TRANSPORTING NO FIELDS WITH KEY col3 = <ls_jogada>-col3
+                                                            col4 = <ls_jogada>-col4
+                                                            col5 = <ls_jogada>-col5
+                                                            col6 = <ls_jogada>-col6
+                                                            col7 = <ls_jogada>-col7
+                                                            col8 = <ls_jogada>-col8.
+      IF sy-subrc <> 0.
+        lv_stop = abap_true.
+        EXIT.
+      ELSE.
+        WRITE: |TENTATIVA: { <ls_jogada>-col3 } - { <ls_jogada>-col4 } - { <ls_jogada>-col5 } - { <ls_jogada>-col6 } - { <ls_jogada>-col7 } - { <ls_jogada>-col8 }|, /.
+      ENDIF.
+
+    ENDLOOP.
+
+    IF lv_stop = abap_true.
+      EXIT.
+    ENDIF.
+
+  ENDDO.
+
+  WRITE: |JOGADA: { <ls_jogada>-col3 } - { <ls_jogada>-col4 } - { <ls_jogada>-col5 } - { <ls_jogada>-col6 } - { <ls_jogada>-col7 } - { <ls_jogada>-col8 }|.
