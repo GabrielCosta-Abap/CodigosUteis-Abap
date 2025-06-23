@@ -1,0 +1,1718 @@
+*&---------------------------------------------------------------------*
+*&  Include           SAPMZBMMMO052_G01
+*&---------------------------------------------------------------------*
+CLASS lcl_file_handler DEFINITION.
+  PUBLIC SECTION.
+
+    CLASS-METHODS:
+      get_excel_local IMPORTING VALUE(iv_file)   TYPE rlgrap-filename
+                      CHANGING  cv_bin_data      TYPE xstring
+                      RETURNING VALUE(rv_return) TYPE abap_bool,
+
+      fill_tables    IMPORTING iv_file          TYPE rlgrap-filename
+                               iv_bin_data      TYPE xstring
+                     CHANGING  ct_table         TYPE STANDARD TABLE
+                               ct_table_cline   TYPE STANDARD TABLE
+                     RETURNING VALUE(rv_return) TYPE abap_bool.
+
+ENDCLASS.
+
+CLASS lcl_file_handler IMPLEMENTATION.
+
+  METHOD get_excel_local.
+
+    DATA: lv_file     TYPE string,
+          lv_filesize TYPE w3param-cont_len,
+          lt_bin_data TYPE w3mimetabtype.
+
+    "Read File and GUI upload
+    lv_file = iv_file.
+    cl_gui_frontend_services=>gui_upload( EXPORTING
+                                            filename  = lv_file
+                                            filetype  = 'BIN'
+                                          IMPORTING
+                                            filelength = lv_filesize
+                                          CHANGING
+                                            data_tab = lt_bin_data
+                                          EXCEPTIONS
+                                            file_open_error         = 1
+                                            file_read_error         = 2
+                                            no_batch                = 3
+                                            gui_refuse_filetransfer = 4
+                                            invalid_type            = 5
+                                            no_authority            = 6
+                                            unknown_error           = 7
+                                            bad_data_format         = 8
+                                            header_not_allowed      = 9
+                                            separator_not_allowed   = 10
+                                            header_too_long         = 11
+                                            unknown_dp_error        = 12
+                                            access_denied           = 13
+                                            dp_out_of_memory        = 14
+                                            disk_full               = 15
+                                            dp_timeout              = 16
+                                            not_supported_by_gui    = 17
+                                            error_no_gui            = 18
+                                            OTHERS                  = 19 ).
+    IF lt_bin_data[] IS INITIAL.
+      MESSAGE TEXT-142 TYPE 'S' DISPLAY LIKE 'E'.  " Falha na leitura do Excel. Verificar Layout!
+      RETURN.
+    ENDIF.
+
+    "Solix -> xstring
+    cv_bin_data = cl_bcs_convert=>solix_to_xstring( it_solix = lt_bin_data ).
+    IF cv_bin_data IS INITIAL.
+      MESSAGE TEXT-142 TYPE 'S' DISPLAY LIKE 'E'.  " Falha na leitura do Excel. Verificar Layout!
+      RETURN.
+    ENDIF.
+
+    rv_return = abap_true.
+
+  ENDMETHOD.
+
+  METHOD fill_tables.
+
+    DATA: lv_file               TYPE string,
+          lt_worksheet_names    TYPE if_fdt_doc_spreadsheet=>t_worksheet_names,
+          lo_tabledescr_ref     TYPE REF TO cl_abap_tabledescr,
+          lo_descr_ref_planilha TYPE REF TO cl_abap_structdescr,
+          lo_descr_ref_tabela   TYPE REF TO cl_abap_structdescr.
+
+    FIELD-SYMBOLS <fs_t_worksheet> TYPE ANY TABLE.
+
+    lv_file = iv_file.
+    TRY.
+
+        DATA(lo_excel) = NEW cl_fdt_xl_spreadsheet( document_name = lv_file
+                                                    xdocument     = iv_bin_data ).
+
+        "Get first worksheet name
+        lo_excel->if_fdt_doc_spreadsheet~get_worksheet_names( IMPORTING worksheet_names = lt_worksheet_names ).
+        IF lines( lt_worksheet_names ) GT 0.
+
+          "First worksheet ref to itab
+          DATA(lo_worksheet_itab) = lo_excel->if_fdt_doc_spreadsheet~get_itab_from_worksheet( lt_worksheet_names[ 1 ] ).
+
+          "Ref to generic field symbol (excel data)
+          ASSIGN lo_worksheet_itab->* TO <fs_t_worksheet>.
+          lo_tabledescr_ref           ?= cl_abap_typedescr=>describe_by_data( <fs_t_worksheet> ).
+          lo_descr_ref_planilha       ?= lo_tabledescr_ref->get_table_line_type( ).
+          lo_tabledescr_ref           ?= cl_abap_typedescr=>describe_by_data( ct_table ).
+          lo_descr_ref_tabela         ?= lo_tabledescr_ref->get_table_line_type( ).
+          "IA - BJM - Demanda DMND0026735 - 19/12/2023
+*          IF lines( lo_descr_ref_planilha->components[] ) NE lines( lo_descr_ref_tabela->components[] ).
+*
+**            MESSAGE 175 DISPLAY LIKE mc_type-e.  " Layout parametrizado não tem o mesmo nº de colunas do excel indicado!
+**            RETURN.
+*
+*          ELSE.
+*
+*            DATA(lv_colunas) = lines( lo_descr_ref_planilha->components ).
+*
+*          ENDIF.
+          DATA(lv_colunas) = 2. " Somente as duas primeiras colunas da planilha são relevantes, e somente os dados da 2º coluna são utilizados
+          "FA - BJM - Demanda DMND0026735 - 19/12/2023
+          LOOP AT <fs_t_worksheet> ASSIGNING FIELD-SYMBOL(<fs_worksheet>).
+
+            CHECK sy-tabix GT 1. "Ignora cabeçalho
+
+            APPEND INITIAL LINE TO ct_table ASSIGNING FIELD-SYMBOL(<fs_table>).
+            DATA(lv_tabix) = sy-tabix.
+            DO lv_colunas TIMES.
+
+              READ TABLE lo_descr_ref_planilha->components[] ASSIGNING FIELD-SYMBOL(<fs_comp_planilha>) INDEX sy-index.
+              READ TABLE lo_descr_ref_tabela->components[]   ASSIGNING FIELD-SYMBOL(<fs_comp_tabela>)   INDEX sy-index.
+              ASSIGN COMPONENT <fs_comp_planilha>-name OF STRUCTURE <fs_worksheet> TO FIELD-SYMBOL(<fs_campo_planilha>).
+              ASSIGN COMPONENT <fs_comp_tabela>-name   OF STRUCTURE <fs_table>     TO FIELD-SYMBOL(<fs_campo_tabela>).
+              <fs_campo_tabela> = <fs_campo_planilha>.
+
+            ENDDO.
+            IF <fs_table> IS INITIAL.
+
+              "Elimina linhas em branco
+              DELETE ct_table INDEX lv_tabix.
+
+            ENDIF.
+
+          ENDLOOP.
+          IF ct_table[] IS INITIAL.
+
+            MESSAGE TEXT-142 TYPE 'S' DISPLAY LIKE 'E'.  " Falha na leitura do Excel. Verificar Layout!
+            RETURN.
+
+          ELSE.
+
+            " Create dynamic work area and assign to FS
+            DATA lv_dy_cline TYPE REF TO data.
+            CREATE DATA lv_dy_cline LIKE LINE OF ct_table_cline.
+            ASSIGN lv_dy_cline->* TO FIELD-SYMBOL(<fs_table_cline>).
+            LOOP AT ct_table ASSIGNING <fs_table>.
+
+              lv_tabix = sy-tabix + 1. " Linha dos itens da planilha
+              MOVE-CORRESPONDING <fs_table> TO <fs_table_cline>.
+*              ASSIGN COMPONENT mc_fieldname-linpla OF STRUCTURE <fs_table_cline> TO FIELD-SYMBOL(<fv_cline>).
+*              <fv_cline> = lv_tabix.
+              INSERT <fs_table_cline> INTO TABLE ct_table_cline.
+
+            ENDLOOP.
+
+          ENDIF.
+
+        ENDIF.
+
+      CATCH cx_root INTO DATA(e_text).
+        MESSAGE e_text->get_text( ) TYPE 'S' DISPLAY LIKE 'E'.
+        RETURN.
+
+    ENDTRY.
+    rv_return = abap_true.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lcl_event_receiver DEFINITION.
+
+  PUBLIC SECTION.
+    CLASS-METHODS:
+      handle_data_changed
+                  FOR EVENT data_changed OF cl_gui_alv_grid
+        IMPORTING er_data_changed
+                  e_onf4
+                  e_onf4_before
+                  e_onf4_after,
+
+      handle_toolbar
+                  FOR EVENT toolbar OF cl_gui_alv_grid
+        IMPORTING e_object e_interactive,
+
+      handle_user_command
+                  FOR EVENT user_command OF cl_gui_alv_grid
+        IMPORTING e_ucomm,
+
+      txt_breve
+        IMPORTING e_row TYPE int4,
+
+      sh_knttp
+        IMPORTING e_row TYPE int4,
+
+      sh_lfdat
+        IMPORTING e_row TYPE int4,
+
+      on_f4 FOR EVENT onf4 OF cl_gui_alv_grid
+        IMPORTING es_row_no e_fieldname er_event_data,
+
+      anexa_arquivo.
+
+ENDCLASS.               "lcl_event_receiver
+
+CLASS lcl_event_receiver IMPLEMENTATION.
+
+  METHOD on_f4.
+    CASE e_fieldname.
+      WHEN 'TXT01'.
+        txt_breve( CONV #( es_row_no-row_id ) ).
+        er_event_data->m_event_handled = 'X' .
+
+      WHEN 'KNTTP'.
+        sh_knttp( CONV #( es_row_no-row_id )  ).
+        er_event_data->m_event_handled = 'X' .
+
+    ENDCASE.
+
+  ENDMETHOD.
+
+  METHOD sh_lfdat.
+
+    DATA lv_date TYPE workflds-gkday.
+
+    READ TABLE gt_item ASSIGNING FIELD-SYMBOL(<ls_item>) INDEX e_row.
+
+    CALL FUNCTION 'F4_DATE'
+      EXPORTING
+        date_for_first_month = sy-datlo
+        display              = 'X'
+      IMPORTING
+        select_date          = <ls_item>-lfdat
+      EXCEPTIONS
+        OTHERS               = 8.
+
+    g_grid->refresh_table_display( ).
+
+  ENDMETHOD.
+
+  METHOD sh_knttp.
+
+    DATA lt_return TYPE TABLE OF ddshretval.
+
+    READ TABLE gt_item ASSIGNING FIELD-SYMBOL(<ls_item>) INDEX e_row.
+    CHECK <ls_item>-txt01 IS INITIAL.
+
+    SELECT knttp, knttx
+      INTO TABLE @DATA(lt_knttp)
+      FROM t163i WHERE spras = @sy-langu.
+
+    CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+      EXPORTING
+        dynpprog        = sy-cprog            " Current program
+        dynpnr          = sy-dynnr            " Screen number
+        window_title    = 'Class. Contábil'                " Title for the hit list
+        value_org       = 'S'              " Value return: C: cell by cell, S: structured
+      TABLES
+        value_tab       = lt_knttp                 " Table of values: entries cell by cell
+        return_tab      = lt_return                  " Return the selected value
+      EXCEPTIONS
+        parameter_error = 1                " Incorrect parameter
+        no_values_found = 2                " No values found
+        OTHERS          = 3.
+    TRY.
+        <ls_item>-knttp = lt_knttp[ knttp = lt_return[ 1 ]-fieldval ]-knttp.
+      CATCH cx_root..
+    ENDTRY.
+
+    g_grid->refresh_table_display( ).
+  ENDMETHOD.
+
+  METHOD txt_breve.
+    TYPES: tt_txz01 TYPE TABLE OF txz01.
+
+    DATA l_index LIKE sy-tabix.
+    DATA t_columns TYPE TABLE OF help_value.
+    DATA t_texto_nota TYPE tt_txz01.
+
+    READ TABLE gt_item ASSIGNING FIELD-SYMBOL(<ls_item>) INDEX e_row.
+    CHECK <ls_item>-txt01 IS INITIAL.
+
+
+    IF gs_header-bukrs IS INITIAL OR gs_header-ekorg IS INITIAL.
+      MESSAGE s009(zbmmm_rtc) DISPLAY LIKE 'E'.
+      EXIT.
+    ENDIF.
+
+    get_parameter texto_nota_lg zstmme145 gs_header-bukrs '' gs_header-ekorg.
+
+    LOOP AT ct_texto_nota_lg INTO cs_texto_nota_lg WHERE tipopa EQ 'LG_TEXTO_RC_CTR_PC'
+                                                      OR tipopa EQ 'TEXTO_RC_CTR_PC'.
+
+      APPEND cs_texto_nota_lg-txz01 TO t_texto_nota[].
+    ENDLOOP.
+
+    IF t_texto_nota[] IS INITIAL.
+      MESSAGE s000(zstsd) WITH 'Constantes de texto não cadastradas' DISPLAY LIKE 'E'.
+    ENDIF.
+
+
+*------ Estrutura auxiliar da função popup
+    FREE: t_columns[].
+    APPEND VALUE #( tabname    = 'EKPO'
+                    fieldname  = 'TXZ01'
+                    selectflag = 'X' ) TO t_columns.
+
+    DATA(l_title) = |Item - { <ls_item>-bnfpo }|.
+
+
+*-------- Exibindo as opções de texto
+    CALL FUNCTION 'MD_POPUP_SHOW_INTERNAL_TABLE'
+      EXPORTING
+        title   = l_title
+      IMPORTING
+        index   = l_index
+      TABLES
+        values  = t_texto_nota
+        columns = t_columns
+      EXCEPTIONS
+        leave   = 1
+        OTHERS  = 2.
+
+    TRY.
+        <ls_item>-txt01 = t_texto_nota[ l_index ].
+
+        IF <ls_item>-bnfpo = '00010'.
+          item_selected = |00010 - { <ls_item>-txt01 }|.
+          READ TABLE gt_item INTO gs_item INDEX 1.
+          PERFORM enter.
+        ENDIF.
+      CATCH cx_root.
+    ENDTRY.
+
+
+    g_grid->refresh_table_display( ).
+
+  ENDMETHOD.
+
+  METHOD handle_data_changed.
+
+    DATA: ls_good         TYPE lvc_s_modi,
+          l_itmreg_maior  TYPE zmmt0031-itmreg,
+          l_space         TYPE string,
+          l_menge         TYPE menge_d,
+          l_maktx         TYPE makt-maktx,
+          l_meins         TYPE zmmt0031-meins,
+          l_matkl         TYPE mara-matkl,
+          l_preis         TYPE zmmt0031-preis,
+          l_preis_t       TYPE zmmt0031-preis,
+          l_subrc         TYPE sy-subrc,
+          error_in_data   TYPE char01,
+          lr_data_changed TYPE REF TO cl_alv_changed_data_protocol.
+
+    DATA lv_item TYPE bnfpo.
+
+    error_in_data = space.
+    l_space = cl_abap_char_utilities=>get_simple_spaces_for_cur_cp( ).
+    IF ( er_data_changed IS NOT BOUND ).
+      CREATE OBJECT lr_data_changed.
+    ENDIF.
+
+    lr_data_changed = er_data_changed.
+
+    LOOP AT lr_data_changed->mt_good_cells INTO ls_good.
+      CASE ls_good-fieldname.
+        WHEN 'KNTTP'.
+          IF ls_good-value IS NOT INITIAL.
+            txt_breve( ls_good-row_id ).
+          ENDIF.
+        WHEN 'MATKL'.
+
+          DATA(lv_motreq) = CONV char4( gs_header-zzmotivo_req ).
+          get_parameter zbmmme1143 zbmmme1143 gs_header-bukrs '' lv_motreq.
+          IF ct_zbmmme1143 IS INITIAL.
+            get_parameter zbmmme1143_space zbmmme1143 gs_header-bukrs '' ''.
+            ct_zbmmme1143[] = ct_zbmmme1143_space[].
+          ENDIF.
+
+          READ TABLE ct_zbmmme1143 INTO DATA(ls_zbmmme1143) WITH KEY matkl = ls_good-value.
+
+          IF sy-subrc <> 0.
+
+            error_in_data = 'X'.
+            CALL METHOD lr_data_changed->add_protocol_entry
+              EXPORTING
+                i_msgid     = '0K'
+                i_msgty     = 'E'
+                i_msgno     = '000'
+                i_fieldname = ls_good-fieldname
+                i_row_id    = ls_good-row_id
+                i_msgv1     = 'Grp. Mercadoria inválido'.
+
+          ENDIF.
+
+      ENDCASE.
+    ENDLOOP.
+
+    IF error_in_data = 'X'.
+      CALL METHOD er_data_changed->display_protocol.
+    ENDIF.
+
+    er_data_changed = lr_data_changed.
+    CLEAR lr_data_changed.
+
+    READ TABLE gt_item ASSIGNING FIELD-SYMBOL(<ls_item>) WITH KEY bnfpo = space.
+    IF sy-subrc = 0.
+      <ls_item>-bnfpo = lines( gt_item ) * 10.
+      <ls_item>-zstat_rtc = '00'.
+      SORT gt_item BY bnfpo.
+      CALL METHOD g_grid->refresh_table_display.
+    ENDIF.
+  ENDMETHOD.                    "handle_data_changed
+
+  METHOD handle_toolbar.
+
+    "Desabilita botões
+    LOOP AT e_object->mt_toolbar ASSIGNING FIELD-SYMBOL(<ls_toolbar>).
+      DELETE e_object->mt_toolbar INDEX sy-tabix.
+    ENDLOOP.
+
+    APPEND VALUE #( butn_type = '0'
+                    function  = 'ANEXOS'
+                    icon      = '@X7@'
+                    quickinfo = 'Anexos'
+                    text      = 'Anexos' ) TO e_object->mt_toolbar.
+
+  ENDMETHOD.
+
+  METHOD handle_user_command.
+
+    DATA: lt_rows TYPE lvc_t_row.
+    DATA: lt_columns TYPE lvc_t_col.
+
+* get selected row
+    CALL METHOD g_grid->get_selected_rows
+      IMPORTING
+        et_index_rows = lt_rows.
+
+    CALL METHOD g_grid->get_selected_columns
+      IMPORTING
+        et_index_columns = lt_columns.
+
+    CASE e_ucomm.
+      WHEN 'ANEXOS'.
+
+        IF gs_header-banfn IS NOT INITIAL.
+          anexa_arquivo( ).
+        ELSE.
+          MESSAGE |Criar requisição primeiro.| TYPE 'S' DISPLAY LIKE 'E'.
+        ENDIF.
+
+    ENDCASE.
+
+  ENDMETHOD.                           "handle_user_command
+
+  METHOD anexa_arquivo.
+
+    DATA: v_objkey TYPE borident.
+
+    DATA: t_message TYPE symsg.
+
+    v_objkey-objkey  = gs_header-banfn.
+    v_objkey-objtype = 'BUS2105'.
+
+    MESSAGE i398(00) WITH 'Anexe os arquivos' ' necessários para a' ' solicitação do serviço!'.
+
+    CALL FUNCTION 'GOS_EXECUTE_SERVICE'
+      EXPORTING
+        ip_service       = 'PCATTA_CREA'
+        is_object        = v_objkey
+        ip_no_commit     = ' '
+        ip_popup         = 'X'
+        ip_rwmod         = 'E'
+      IMPORTING
+        ep_message       = t_message
+      EXCEPTIONS
+        execution_failed = 1
+        OTHERS           = 2.
+
+    IF sy-subrc = 0.
+
+      CALL FUNCTION 'GOS_EXECUTE_SERVICE'
+        EXPORTING
+          ip_service       = 'VIEW_ATTA'
+          is_object        = v_objkey
+          ip_no_commit     = ' '
+          ip_popup         = 'X'
+          ip_rwmod         = 'E'
+        IMPORTING
+          ep_message       = t_message
+        EXCEPTIONS
+          execution_failed = 1
+          OTHERS           = 2.
+
+    ENDIF.
+
+    IF sy-subrc <> 0.
+      MESSAGE i398(00) WITH |Não há arquivos anexados ainda.| DISPLAY LIKE 'I'.
+    ENDIF.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+*--------------------------------------------------------------------*
+
+CLASS lcl_event_receiver_serv DEFINITION.
+
+  PUBLIC SECTION.
+    CLASS-METHODS:
+      handle_data_changed
+                  FOR EVENT data_changed OF cl_gui_alv_grid
+        IMPORTING er_data_changed,
+
+      handle_toolbar
+                  FOR EVENT toolbar OF cl_gui_alv_grid
+        IMPORTING e_object e_interactive,
+
+      handle_user_command
+                  FOR EVENT user_command OF cl_gui_alv_grid
+        IMPORTING e_ucomm,
+
+      handle_hotspot_click FOR EVENT hotspot_click OF cl_gui_alv_grid
+        IMPORTING
+          e_row_id
+          e_column_id
+          es_row_no
+          sender,
+
+      delete_row
+        IMPORTING it_row TYPE lvc_t_row,
+
+      descr_serv
+        IMPORTING is_good TYPE lvc_s_modi,
+
+      categoria_demanda
+        IMPORTING is_good TYPE lvc_s_modi,
+
+      valida_serv
+        IMPORTING is_good        TYPE lvc_s_modi
+        RETURNING VALUE(rv_erro) TYPE boolean,
+
+      valida_dif_serv
+        IMPORTING is_good        TYPE lvc_s_modi
+        RETURNING VALUE(rv_erro) TYPE boolean,
+
+      busca_grp_merc
+        IMPORTING is_good TYPE lvc_s_modi,
+
+      sh_srvpos
+        IMPORTING e_row TYPE int4,
+
+      on_f4 FOR EVENT onf4 OF cl_gui_alv_grid
+        IMPORTING es_row_no e_fieldname er_event_data.
+
+ENDCLASS.               "lcl_event_receiver
+
+CLASS lcl_event_receiver_serv IMPLEMENTATION.
+
+  METHOD on_f4.
+    CASE e_fieldname.
+      WHEN 'SRVPOS'.
+        sh_srvpos( CONV #( es_row_no-row_id ) ).
+        er_event_data->m_event_handled = 'X' .
+
+    ENDCASE.
+
+  ENDMETHOD.
+
+  METHOD descr_serv.
+
+    READ TABLE gt_item_serv ASSIGNING FIELD-SYMBOL(<ls_item_serv>) INDEX is_good-row_id.
+    CHECK sy-subrc = 0.
+
+    SELECT SINGLE asktx
+      FROM asmdt
+      INTO <ls_item_serv>-ktext1
+      WHERE asnum = is_good-value
+        AND spras = sy-langu.
+    IF sy-subrc <> 0.
+      CLEAR <ls_item_serv>-ktext1.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD categoria_demanda.
+
+    DATA(lv_value) = CONV char15( |{ is_good-value ALPHA = OUT }| ).
+
+    READ TABLE gt_item_serv ASSIGNING FIELD-SYMBOL(<ls_item_serv>) INDEX is_good-row_id.
+    CHECK sy-subrc = 0.
+
+    get_parameter zbmmme1272 zbmmme1272 gs_header-bukrs '' ''.
+
+    LOOP AT ct_zbmmme1272 ASSIGNING FIELD-SYMBOL(<ls_1272>).
+
+      IF ( lv_value >= <ls_1272>-low AND lv_value <= <ls_1272>-high )
+      OR ( lv_value EQ <ls_1272>-low ).
+
+        <ls_item_serv>-cat_demanda = <ls_1272>-obs.
+        EXIT.
+
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD valida_serv.
+
+    DATA lra_srvpos TYPE RANGE OF srvpos.
+
+    get_parameter zbmmme1272 zbmmme1272 gs_header-bukrs '' ''.
+
+    lra_srvpos[] = VALUE #( FOR ls_srvpos IN ct_zbmmme1272[] ( sign   = ls_srvpos-sign
+                                                               option = ls_srvpos-option
+                                                               low    = |{ ls_srvpos-low ALPHA = IN }|
+                                                               high   = |{ ls_srvpos-high ALPHA = IN }| ) ).
+    IF is_good-value NOT IN lra_srvpos[].
+      rv_erro = abap_true.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD valida_dif_serv.
+
+*    CHECK is_good-row_id > 1.
+*
+*    DATA(lv_cat_demanda) = gt_item_serv[ 1 ]-cat_demanda.
+*    DATA(lv_value) = CONV char15( |{ is_good-value ALPHA = OUT }| ).
+*
+*    get_parameter zbmmme1272 zbmmme1272 gs_header-bukrs '' ''.
+*
+*    LOOP AT ct_zbmmme1272 ASSIGNING FIELD-SYMBOL(<ls_1272>).
+*
+*      IF ( lv_value >= <ls_1272>-low AND lv_value <= <ls_1272>-high )
+*      OR ( lv_value EQ <ls_1272>-low ).
+*
+*        IF lv_cat_demanda <> <ls_1272>-obs.
+*          rv_erro = abap_true.
+*        ENDIF.
+*
+*      ENDIF.
+*    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD sh_srvpos.
+
+    DATA lt_return TYPE TABLE OF ddshretval.
+    DATA ls_good TYPE lvc_s_modi.
+    DATA lra_srvpos TYPE RANGE OF srvpos.
+
+    get_parameter zbmmme1272 zbmmme1272 gs_header-bukrs '' ''.
+
+    lra_srvpos[] = VALUE #( FOR ls_srvpos IN ct_zbmmme1272[] ( sign   = ls_srvpos-sign
+                                                               option = ls_srvpos-option
+                                                               low    = |{ ls_srvpos-low ALPHA = IN }|
+                                                               high   = |{ ls_srvpos-high ALPHA = IN }| ) ).
+
+    READ TABLE gt_item_serv ASSIGNING FIELD-SYMBOL(<ls_item_serv>) INDEX e_row.
+
+    SELECT asmdt~asnum,
+           asmdt~asktx,
+           asmd~taxtariffcode,
+           skat~saknr,
+           skat~txt50
+      INTO TABLE @DATA(lt_asmdt)
+      FROM asmdt
+      JOIN asmd ON asmd~asnum = asmdt~asnum
+      JOIN t030 ON t030~bklas = asmd~bklas
+      JOIN skat ON skat~ktopl = t030~ktopl
+               AND skat~saknr = t030~konts
+      WHERE asmdt~spras        EQ @sy-langu
+        AND asmdt~asnum        IN @lra_srvpos[] " - GC - 22.06.2023
+        AND asmd~mstae         EQ @space
+        AND asmd~lvorm         EQ @space
+        AND asmd~taxtariffcode NE @space
+        AND t030~ktopl         EQ 'PCTA' " - GC - 26.06.2023
+        AND t030~ktosl         EQ 'GBB'  " - GC - 26.06.2023
+        AND t030~komok         EQ 'VBR'. " - GC - 26.06.2023
+
+    IF sy-subrc <> 0.
+      MESSAGE |Nenhum serviço encontrado.| TYPE 'S' DISPLAY LIKE 'E'.
+      RETURN.
+    ENDIF.
+
+    SORT lt_asmdt BY asnum.
+    DELETE ADJACENT DUPLICATES FROM lt_asmdt COMPARING asnum.
+
+    CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+      EXPORTING
+        retfield        = 'ASNUM'
+        dynpprog        = sy-cprog            " Current program
+        dynpnr          = sy-dynnr            " Screen number
+        window_title    = 'Serviço'                " Title for the hit list
+        value_org       = 'S'              " Value return: C: cell by cell, S: structured
+      TABLES
+        value_tab       = lt_asmdt                 " Table of values: entries cell by cell
+        return_tab      = lt_return                  " Return the selected value
+      EXCEPTIONS
+        parameter_error = 1                " Incorrect parameter
+        no_values_found = 2                " No values found
+        OTHERS          = 3.
+    TRY.
+        <ls_item_serv>-srvpos = CONV #( lt_return[ 1 ]-fieldval ).
+        <ls_item_serv>-srvpos = |{ <ls_item_serv>-srvpos ALPHA = IN }|.
+
+        <ls_item_serv>-ktext1 = lt_asmdt[ asnum = CONV #( <ls_item_serv>-srvpos ) ]-asktx.
+
+        busca_grp_merc( VALUE #( row_id = e_row
+                                 value  = <ls_item_serv>-srvpos ) ).
+
+        categoria_demanda( VALUE #( row_id = e_row
+                                    value  = <ls_item_serv>-srvpos ) ).
+
+      CATCH cx_root..
+    ENDTRY.
+
+
+    g_grid_serv->refresh_table_display( ).
+  ENDMETHOD.
+
+  METHOD busca_grp_merc.
+    CHECK is_good-row_id = 1.
+
+    READ TABLE gt_item ASSIGNING FIELD-SYMBOL(<ls_item>) WITH KEY bnfpo = item_selected.
+    CHECK sy-subrc = 0.
+
+    DATA(lv_asnum) = CONV asnum( is_good-value ).
+    lv_asnum = |{ lv_asnum ALPHA = IN }|.
+    SELECT SINGLE matkl
+      FROM asmd
+      INTO <ls_item>-matkl
+      WHERE asnum = lv_asnum.
+    IF sy-subrc <> 0.
+      CLEAR <ls_item>-matkl.
+      MESSAGE s398(00) WITH |Grupo de mercadorias não encontrado com o serviço| DISPLAY LIKE 'E'.
+    ELSE.
+
+      SELECT SINGLE wgbez
+        FROM t023t
+        INTO <ls_item>-eknam
+        WHERE matkl = <ls_item>-matkl
+          AND spras = sy-langu.
+
+      g_grid->refresh_table_display( ).
+
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD handle_data_changed.
+
+    DATA: ls_good         TYPE lvc_s_modi,
+          l_itmreg_maior  TYPE zmmt0031-itmreg,
+          l_space         TYPE string,
+          l_menge         TYPE menge_d,
+          l_maktx         TYPE makt-maktx,
+          l_meins         TYPE zmmt0031-meins,
+          l_matkl         TYPE mara-matkl,
+          l_preis         TYPE zmmt0031-preis,
+          l_vlr_tot       TYPE esll-tbtwr,
+          l_subrc         TYPE sy-subrc,
+          error_in_data   TYPE char01,
+          lr_data_changed TYPE REF TO cl_alv_changed_data_protocol.
+    DATA l_atualiza.
+
+    DATA: es_row_no  TYPE lvc_s_roid.
+    DATA: es_row_info  TYPE lvc_s_row.
+    DATA: es_col_info  TYPE lvc_s_col.
+    DATA: fes_row_no  TYPE lvc_s_roid.
+    DATA: fes_row_id  TYPE lvc_s_row.
+    DATA: fes_col_id  TYPE lvc_s_col.
+    DATA: mt_cells TYPE lvc_t_ceno.
+    DATA: mt_rows TYPE lvc_t_row.
+
+    DATA       gt_modi         TYPE lvc_t_modi.
+
+    IF item_selected IS INITIAL.
+      MESSAGE s398(00) WITH 'Selecione um item' DISPLAY LIKE 'E'.
+      EXIT.
+    ENDIF.
+
+    error_in_data = space.
+    l_space = cl_abap_char_utilities=>get_simple_spaces_for_cur_cp( ).
+    IF ( er_data_changed IS NOT BOUND ).
+      CREATE OBJECT lr_data_changed.
+    ENDIF.
+
+    lr_data_changed = er_data_changed.
+
+    LOOP AT lr_data_changed->mt_good_cells INTO ls_good.
+      READ TABLE gt_item_serv ASSIGNING FIELD-SYMBOL(<ls_item_serv>) INDEX ls_good-row_id.
+      CHECK sy-subrc = 0.
+
+      CASE ls_good-fieldname.
+        WHEN 'SRVPOS'.
+          IF ls_good-value IS INITIAL.
+            <ls_item_serv>-class = ''.
+          ELSE.
+
+            IF ls_good-value(3) = 'IMP'.
+              DATA(lv_enable_waers) = 'X'.
+            ELSE.
+              lv_enable_waers = ''.
+            ENDIF.
+
+            <ls_item_serv>-srvpos = ls_good-value.
+
+            READ TABLE gt_item ASSIGNING FIELD-SYMBOL(<ls_item>) WITH KEY bnfpo = gs_item-bnfpo.
+            IF sy-subrc = 0.
+              IF <ls_item>-knttp <> 'U'.
+                <ls_item_serv>-class = '@3W@'.
+              ENDIF.
+            ENDIF.
+
+          ENDIF.
+
+          IF valida_serv( ls_good ) = abap_true.
+            error_in_data = 'X'.
+            CALL METHOD lr_data_changed->add_protocol_entry
+              EXPORTING
+                i_msgid     = '0K'
+                i_msgty     = 'E'
+                i_msgno     = '000'
+                i_fieldname = ls_good-fieldname
+                i_row_id    = ls_good-row_id
+                i_msgv1     = 'Serviço inválido!'.
+          ENDIF.
+
+          IF valida_dif_serv( ls_good ) = abap_true.
+            error_in_data = 'X'.
+            CALL METHOD lr_data_changed->add_protocol_entry
+              EXPORTING
+                i_msgid     = 'ZBMMM_RTC'
+                i_msgty     = 'E'
+                i_msgno     = '029'
+                i_fieldname = ls_good-fieldname
+                i_row_id    = ls_good-row_id.
+
+          ENDIF.
+
+          descr_serv( ls_good ).
+          categoria_demanda( ls_good ).
+          busca_grp_merc( ls_good ).
+
+          g_grid_serv->get_scroll_info_via_id(
+        IMPORTING
+          es_row_no   = es_row_no
+          es_row_info = es_row_info
+          es_col_info = es_col_info
+          ).
+
+          g_grid_serv->get_current_cell(
+          IMPORTING
+            es_row_id = fes_row_id
+            es_col_id = fes_col_id
+            es_row_no = fes_row_no
+               ).
+
+          g_grid_serv->refresh_table_display(  ).
+
+          es_row_info-index = fes_row_id-index.
+          es_row_no-row_id = CONV #( fes_row_id-index ).
+
+          es_col_info = 'MENGE'.
+          g_grid_serv->set_scroll_info_via_id(
+          is_row_info = es_row_info
+          is_col_info = es_col_info
+          is_row_no   = es_row_no
+          ).
+
+          fes_col_id = 'MENGE'.
+          g_grid_serv->set_current_cell_via_id( is_row_id = fes_row_id
+                                        is_column_id = fes_col_id
+                                        is_row_no = fes_row_no ).
+
+        WHEN 'MENGE' OR
+             'PREIS'.
+
+          CALL METHOD lr_data_changed->modify_cell
+            EXPORTING
+              i_row_id    = ls_good-row_id
+              i_fieldname = ls_good-fieldname
+              i_value     = ls_good-value.
+
+          l_atualiza = 'X'.
+
+          "Valor do campo Total
+          CALL METHOD lr_data_changed->get_cell_value
+            EXPORTING
+              i_row_id    = ls_good-row_id
+              i_fieldname = 'MENGE'
+            IMPORTING
+              e_value     = l_menge.
+          CALL METHOD lr_data_changed->get_cell_value
+            EXPORTING
+              i_row_id    = ls_good-row_id
+              i_fieldname = 'PREIS'
+            IMPORTING
+              e_value     = l_preis.
+          l_vlr_tot = l_menge * l_preis.
+          <ls_item_serv>-vlr_tot = l_vlr_tot.
+
+          IF <ls_item_serv> IS ASSIGNED.
+            <ls_item_serv>-preis = l_preis.
+          ENDIF.
+
+          CALL METHOD lr_data_changed->modify_cell
+            EXPORTING
+              i_row_id    = ls_good-row_id
+              i_fieldname = 'VLR_TOT'
+              i_value     = l_vlr_tot.
+
+          g_grid_serv->get_scroll_info_via_id(
+        IMPORTING
+          es_row_no   = es_row_no
+          es_row_info = es_row_info
+          es_col_info = es_col_info
+          ).
+
+          g_grid_serv->get_current_cell(
+          IMPORTING
+            es_row_id = fes_row_id
+            es_col_id = fes_col_id
+            es_row_no = fes_row_no
+               ).
+
+          g_grid_serv->refresh_table_display(  ).
+
+          es_row_info-index = fes_row_id-index.
+          es_row_no-row_id = CONV #( fes_row_id-index ).
+
+          es_col_info = 'PREIS'.
+          g_grid_serv->set_scroll_info_via_id(
+          is_row_info = es_row_info
+          is_col_info = es_col_info
+          is_row_no   = es_row_no
+          ).
+
+          fes_col_id = 'PREIS'.
+          g_grid_serv->set_current_cell_via_id( is_row_id = fes_row_id
+                                        is_column_id = fes_col_id
+                                        is_row_no = fes_row_no ).
+
+        WHEN 'WAERS'.
+
+          ls_good-value = to_upper( ls_good-value ).
+          <ls_item_serv>-waers = ls_good-value.
+
+          CALL METHOD lr_data_changed->modify_cell
+            EXPORTING
+              i_row_id    = ls_good-row_id
+              i_fieldname = ls_good-fieldname
+              i_value     = ls_good-value.
+
+      ENDCASE.
+    ENDLOOP.
+
+    READ TABLE gt_item ASSIGNING <ls_item> WITH KEY bnfpo = gs_item-bnfpo.
+    IF sy-subrc = 0.
+      IF <ls_item>-knttp <> 'U'.
+
+        LOOP AT gt_item_serv ASSIGNING <ls_item_serv> WHERE srvpos IS NOT INITIAL.
+          <ls_item_serv>-class  = '@3W@'.
+          <ls_item_serv>-srvpos = |{ <ls_item_serv>-srvpos ALPHA = IN }|.
+        ENDLOOP.
+
+        CALL METHOD g_grid_serv->refresh_table_display
+          EXPORTING
+            i_soft_refresh = 'X'.
+
+      ENDIF.
+    ENDIF.
+
+    READ TABLE gt_item_serv TRANSPORTING NO FIELDS WITH KEY srvpos(3) = 'IMP'.
+    IF sy-subrc = 0 OR lv_enable_waers = 'X'.
+
+      LOOP AT gt_item_serv ASSIGNING <ls_item_serv>.
+
+        <ls_item_serv>-celltab = VALUE #( ( style     = cl_gui_alv_grid=>mc_style_enabled
+                                            fieldname = 'WAERS'  ) ).
+      ENDLOOP.
+
+    ELSE.
+      LOOP AT gt_item_serv ASSIGNING <ls_item_serv>.
+
+        <ls_item_serv>-waers = 'BRL'.
+        <ls_item_serv>-celltab = VALUE #( ( style     = cl_gui_alv_grid=>mc_style_disabled
+                                            fieldname = 'WAERS'  ) ).
+      ENDLOOP.
+
+    ENDIF.
+
+    READ TABLE gt_item_serv ASSIGNING <ls_item_serv> WITH KEY extrow = space.
+    IF sy-subrc = 0.
+      <ls_item_serv>-extrow = lines( gt_item_serv ) * 10.
+      SORT gt_item_serv BY extrow.
+      IF l_atualiza = 'X'.
+        CALL METHOD g_grid_serv->refresh_table_display
+          EXPORTING
+            i_soft_refresh = 'X'.
+      ENDIF.
+    ENDIF.
+
+    IF error_in_data = 'X'.
+      CALL METHOD er_data_changed->display_protocol.
+    ENDIF.
+
+*    IF l_atualiza = 'X'.
+    cl_gui_cfw=>flush( ).
+    g_grid_serv->refresh_table_display( ).
+*    ENDIF.
+
+    er_data_changed = lr_data_changed.
+    CLEAR lr_data_changed.
+
+    PERFORM preenche_bukrs_e_name_werks.
+
+    gs_item-t_item_serv = CORRESPONDING #( gt_item_serv ).
+    READ TABLE gt_item ASSIGNING <ls_item> WITH KEY bnfpo = gs_item-bnfpo.
+    IF sy-subrc = 0.
+      <ls_item>-t_item_serv = gs_item-t_item_serv .
+    ENDIF.
+  ENDMETHOD.                    "handle_data_changed
+
+  METHOD handle_toolbar.
+    DATA : mt_toolbar TYPE stb_button.
+    CONSTANTS lc_grid_buttons_buttons TYPE string VALUE '&LOCAL&APPEND'.
+
+    "Desabilita botões de inclusão de linhas
+    LOOP AT e_object->mt_toolbar ASSIGNING FIELD-SYMBOL(<ls_toolbar>).
+      IF lc_grid_buttons_buttons NS <ls_toolbar>-function.
+        DELETE e_object->mt_toolbar INDEX sy-tabix.
+      ENDIF.
+    ENDLOOP.
+
+    IF gs_header-banfn IS INITIAL OR ( gs_item-frgkz <> 'A' AND gs_item-frgkz <> 'L' ).
+      CLEAR mt_toolbar.
+      mt_toolbar-butn_type = '0'.
+      mt_toolbar-function  = 'DELETE'.
+      mt_toolbar-icon      = '@11@'.
+      mt_toolbar-quickinfo = 'DELETAR'.
+      APPEND mt_toolbar TO e_object->mt_toolbar.
+    ELSE.
+      FREE e_object->mt_toolbar[].
+    ENDIF.
+*
+  ENDMETHOD.
+
+  METHOD handle_user_command.
+
+    DATA: lt_rows TYPE lvc_t_row.
+    DATA: lt_columns TYPE lvc_t_col.
+
+* get selected row
+    CALL METHOD g_grid_serv->get_selected_rows
+      IMPORTING
+        et_index_rows = lt_rows.
+
+    CALL METHOD g_grid_serv->get_selected_columns
+      IMPORTING
+        et_index_columns = lt_columns.
+
+    CASE e_ucomm.
+      WHEN 'DELETE'.
+        delete_row( lt_rows ).
+    ENDCASE.
+
+    CALL METHOD g_grid_serv->refresh_table_display.
+    CALL METHOD cl_gui_cfw=>flush.
+
+  ENDMETHOD.                           "handle_user_command
+
+  METHOD handle_hotspot_click.
+    DATA:
+      ls_col_id    TYPE lvc_s_col.
+
+    IF e_column_id = 'CLASS'.
+
+      READ TABLE gt_item_serv INTO gs_item_serv INDEX e_row_id-index.
+
+      CHECK gs_item_serv-class IS NOT INITIAL.
+      CHECK item_selected IS NOT INITIAL.
+
+      READ TABLE gt_item INTO gs_item WITH KEY bnfpo = item_selected."gs_item_serv-extrow.
+
+      READ TABLE gs_item-t_item_serv INTO DATA(ls_item_serv) WITH KEY extrow = gs_item_serv-extrow.
+      IF gs_item-knttp IS INITIAL.
+        MESSAGE s398(00) WITH 'Preencher primeiro a class. contábil' 'do item RC' DISPLAY LIKE 'E'.
+        EXIT.
+      ELSEIF gs_item-knttp = 'U'.
+        EXIT.
+      ENDIF.
+
+      CALL SCREEN 0200 STARTING AT 30 6 ENDING AT 123 14.
+      IF ok_code = 'OK'.
+        IF ls_item_serv-zmmt0032[] IS NOT INITIAL.
+          ls_item_serv-class = '@36@'.
+        ELSE.
+          ls_item_serv-class = '@3W@'.
+        ENDIF.
+        TRY.
+            gs_item_serv = CORRESPONDING #( ls_item_serv ).
+            MODIFY gt_item_serv FROM gs_item_serv INDEX e_row_id-index.
+            gs_item-t_item_serv = CORRESPONDING #( gt_item_serv[] ).
+            CALL METHOD g_grid_serv->refresh_table_display.
+          CATCH cx_root.
+        ENDTRY.
+      ENDIF.
+    ENDIF.
+
+    ls_col_id-fieldname = 'SRVPOS'.
+    CALL METHOD g_grid->set_current_cell_via_id
+      EXPORTING
+        is_row_id    = e_row_id
+        is_column_id = ls_col_id.
+
+  ENDMETHOD.                    "handle_hotspot_click
+
+  METHOD delete_row.
+
+
+    LOOP AT it_row INTO DATA(ls_row) .
+
+      DELETE gt_item_serv        INDEX ls_row-index.
+      DELETE gs_item-t_item_serv INDEX ls_row-index.
+
+*      READ TABLE gt_item_serv ASSIGNING FIELD-SYMBOL(<ls_item_serv>) INDEX ls_row-index.
+*      <ls_item_serv>-class = ''.
+*      <ls_item_serv>-ktext1 = ''.
+*      <ls_item_serv>-menge = ''.
+*      <ls_item_serv>-preis = ''.
+*      <ls_item_serv>-srvpos = ''.
+*      <ls_item_serv>-vlr_tot = ''.
+*      <ls_item_serv>-waers = ''.
+*      FREE <ls_item_serv>-zmmt0032[].
+*
+*      READ TABLE gs_item-t_item_serv ASSIGNING FIELD-SYMBOL(<ls_item_serv_deep>) INDEX ls_row-index.
+*      CHECK sy-subrc = 0.
+*      <ls_item_serv_deep>-class = ''.
+*      <ls_item_serv_deep>-ktext1 = ''.
+*      <ls_item_serv_deep>-menge = ''.
+*      <ls_item_serv_deep>-preis = ''.
+*      <ls_item_serv_deep>-srvpos = ''.
+*      <ls_item_serv_deep>-vlr_tot = ''.
+*      <ls_item_serv_deep>-waers = ''.
+*      FREE <ls_item_serv_deep>-zmmt0032[].
+
+*      READ TABLE gt_item ASSIGNING FIELD-SYMBOL(<ls_item>) WITH KEY bnfpo = item_selected.
+*      IF sy-subrc = 0..
+*        READ TABLE <ls_item>-t_item_serv ASSIGNING <ls_item_serv_deep> INDEX ls_row-index.
+*        CHECK sy-subrc = 0.
+*        <ls_item_serv_deep>-class = ''.
+*        <ls_item_serv_deep>-ktext1 = ''.
+*        <ls_item_serv_deep>-menge = ''.
+*        <ls_item_serv_deep>-preis = ''.
+*        <ls_item_serv_deep>-srvpos = ''.
+*        <ls_item_serv_deep>-vlr_tot = ''.
+*        <ls_item_serv_deep>-waers = ''.
+*        FREE <ls_item_serv_deep>-zmmt0032[].
+*      ENDIF.
+
+    ENDLOOP.
+
+    DATA lv_itmnum TYPE i.
+    LOOP AT gt_item_serv ASSIGNING FIELD-SYMBOL(<ls_item_serv>).
+      DATA(lv_tabix) = sy-tabix.
+
+      ADD 10 TO lv_itmnum.
+      <ls_item_serv>-extrow = lv_itmnum.
+
+      READ TABLE gs_item-t_item_serv ASSIGNING FIELD-SYMBOL(<ls_t_item_serv>) INDEX lv_tabix.
+      IF sy-subrc = 0.
+        <ls_t_item_serv>-extrow = lv_itmnum.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+*--------------------------------------------------------------------*
+
+CLASS lcl_event_receiver_0200 DEFINITION.
+
+  PUBLIC SECTION.
+    TYPES ty_fname TYPE RANGE OF lvc_fname.
+
+    CLASS-METHODS:
+      handle_toolbar
+                  FOR EVENT toolbar OF cl_gui_alv_grid
+        IMPORTING e_object e_interactive,
+
+      set_celltab CHANGING celltab TYPE lvc_t_styl,
+
+      get_enabled_field
+        IMPORTING i_knttp         TYPE knttp
+        RETURNING VALUE(rv_field) TYPE ty_fname.
+
+
+    METHODS:
+      handle_data_changed                     FOR EVENT data_changed OF cl_gui_alv_grid
+        IMPORTING er_data_changed
+                  e_onf4
+                  e_onf4_before
+                  e_onf4_after
+                  e_ucomm
+                  sender,
+      handle_data_changed_finished            FOR EVENT data_changed_finished OF cl_gui_alv_grid
+        IMPORTING
+          e_modified
+          et_good_cells,
+
+      handle_user_command FOR EVENT user_command OF cl_gui_alv_grid
+        IMPORTING e_ucomm.
+
+  PRIVATE SECTION.
+    TYPES: ty_tab LIKE LINE OF gt_class_contab.
+    METHODS: refresh_grid,
+      fill_celltab IMPORTING "p_row_id    TYPE int4
+                             p_fieldname TYPE lvc_fname
+                   CHANGING  pt_celltab  TYPE lvc_t_styl.
+
+    METHODS valida_obj_custo_iguais
+
+      IMPORTING cs_row_id       TYPE  int4
+                cs_fieldname    TYPE  lvc_fname
+                cs_value        TYPE  lvc_value
+      CHANGING  lr_data_changed TYPE REF TO cl_alv_changed_data_protocol
+                error_in_data   TYPE char01.
+
+ENDCLASS.               "lcl_event_receiver
+
+CLASS lcl_event_receiver_0200 IMPLEMENTATION.
+
+  METHOD handle_data_changed.
+
+    DATA: ls_good         TYPE lvc_s_modi,
+          l_multipla      TYPE c,
+          l_space         TYPE string,
+          l_subrc         TYPE sy-subrc,
+          error_in_data   TYPE char01,
+          lr_data_changed TYPE REF TO cl_alv_changed_data_protocol.
+
+    IF ( er_data_changed IS NOT BOUND ).
+      CREATE OBJECT lr_data_changed.
+    ENDIF.
+
+    lr_data_changed = er_data_changed.
+
+    TRY.
+        DATA(ls_primeiro_item) = gt_class_contab[ 1 ].
+      CATCH cx_root.
+    ENDTRY.
+
+
+    LOOP AT lr_data_changed->mt_good_cells ASSIGNING FIELD-SYMBOL(<fs_good>).
+      READ TABLE gt_class_contab ASSIGNING FIELD-SYMBOL(<fs_zmmt0032>) INDEX <fs_good>-row_id.
+      IF sy-subrc = 0.
+
+        CHECK <fs_good> IS ASSIGNED.
+        IF  <fs_good>-value IS NOT INITIAL
+          AND <fs_good>-value <> '00000000'.
+
+          CASE  <fs_good>-fieldname.
+            WHEN 'KOSTL' .
+              IF <fs_zmmt0032>-aufnr        IS NOT INITIAL
+                OR <fs_zmmt0032>-nplnr      IS NOT INITIAL
+                OR <fs_zmmt0032>-vornr      IS NOT INITIAL
+                OR <fs_zmmt0032>-ps_psp_pnr IS NOT INITIAL.
+                CHECK <fs_good> IS ASSIGNED.
+                error_in_data = 'X'.
+                CALL METHOD lr_data_changed->add_protocol_entry
+                  EXPORTING
+                    i_msgid     = '0K'
+                    i_msgty     = 'E'
+                    i_msgno     = '000'
+                    i_fieldname = <fs_good>-fieldname
+                    i_row_id    = <fs_good>-row_id
+                    i_msgv1     = 'Preencher apenas 1 tipo de Clasif. Contábil'.
+              ENDIF.
+
+
+              IF ls_primeiro_item-aufnr      IS NOT INITIAL
+              OR ls_primeiro_item-nplnr      IS NOT INITIAL
+              OR ls_primeiro_item-vornr      IS NOT INITIAL
+              OR ls_primeiro_item-ps_psp_pnr IS NOT INITIAL.
+                CHECK <fs_good> IS ASSIGNED.
+                error_in_data = 'X'.
+                CALL METHOD lr_data_changed->add_protocol_entry
+                  EXPORTING
+                    i_msgid     = '0K'
+                    i_msgty     = 'E'
+                    i_msgno     = '000'
+                    i_fieldname = <fs_good>-fieldname
+                    i_row_id    = <fs_good>-row_id
+                    i_msgv1     = 'Preencher apenas 1 tipo de Clasif. Contábil'.
+              ENDIF.
+
+              " valida se o cara informou mais de um obj de custo iguais
+              IF <fs_good> IS ASSIGNED.
+                DATA(lv_value)      =  <fs_good>-value   .
+                DATA(lv_row_id)     = CONV int4( <fs_good>-row_id  ).
+                DATA(lv_fieldname)  = <fs_good>-fieldname.
+
+                me->valida_obj_custo_iguais(
+            EXPORTING
+              cs_value       = lv_value
+              cs_row_id      = lv_row_id
+              cs_fieldname   = lv_fieldname
+            CHANGING
+              lr_data_changed = lr_data_changed
+              error_in_data  = error_in_data       ).
+              ENDIF.
+
+            WHEN 'AUFNR'.
+              IF ( <fs_zmmt0032>-kostl IS NOT INITIAL
+                OR <fs_zmmt0032>-nplnr IS NOT INITIAL
+                OR <fs_zmmt0032>-vornr IS NOT INITIAL
+                OR <fs_zmmt0032>-ps_psp_pnr IS NOT INITIAL ).
+                CHECK <fs_good> IS ASSIGNED.
+                error_in_data = 'X'.
+                CALL METHOD lr_data_changed->add_protocol_entry
+                  EXPORTING
+                    i_msgid     = '0K'
+                    i_msgty     = 'E'
+                    i_msgno     = '000'
+                    i_fieldname = <fs_good>-fieldname
+                    i_row_id    = <fs_good>-row_id
+                    i_msgv1     = 'Preencher apenas 1 tipo de Clasif. Contábil'.
+              ENDIF.
+
+              IF ( ls_primeiro_item-kostl IS NOT INITIAL
+                OR ls_primeiro_item-nplnr IS NOT INITIAL
+                OR ls_primeiro_item-vornr IS NOT INITIAL
+                OR ls_primeiro_item-ps_psp_pnr IS NOT INITIAL ).
+                CHECK <fs_good> IS ASSIGNED.
+                error_in_data = 'X'.
+                CALL METHOD lr_data_changed->add_protocol_entry
+                  EXPORTING
+                    i_msgid     = '0K'
+                    i_msgty     = 'E'
+                    i_msgno     = '000'
+                    i_fieldname = <fs_good>-fieldname
+                    i_row_id    = <fs_good>-row_id
+                    i_msgv1     = 'Preencher apenas 1 tipo de Clasif. Contábil'.
+              ENDIF.
+
+              " valida se o cara informou mais de um obj de custo iguais
+              IF <fs_good> IS ASSIGNED.
+                lv_value      = <fs_good>-value    .
+                lv_row_id     = <fs_good>-row_id   .
+                lv_fieldname  = <fs_good>-fieldname.
+
+                me->valida_obj_custo_iguais(
+            EXPORTING
+              cs_value       = lv_value
+              cs_row_id      = lv_row_id
+              cs_fieldname   = lv_fieldname
+            CHANGING
+              lr_data_changed = lr_data_changed
+              error_in_data  = error_in_data       ).
+              ENDIF.
+
+            WHEN 'NPLNR'.
+              IF ( <fs_zmmt0032>-kostl IS NOT INITIAL
+                OR <fs_zmmt0032>-aufnr IS NOT INITIAL
+                OR <fs_zmmt0032>-ps_psp_pnr IS NOT INITIAL ).
+                CHECK <fs_good> IS ASSIGNED.
+                error_in_data = 'X'.
+                CALL METHOD lr_data_changed->add_protocol_entry
+                  EXPORTING
+                    i_msgid     = '0K'
+                    i_msgty     = 'E'
+                    i_msgno     = '000'
+                    i_fieldname = <fs_good>-fieldname
+                    i_row_id    = <fs_good>-row_id
+                    i_msgv1     = 'Preencher apenas 1 tipo de Clasif. Contábil'.
+              ENDIF.
+
+              IF ( ls_primeiro_item-kostl IS NOT INITIAL
+                OR ls_primeiro_item-aufnr IS NOT INITIAL
+                OR ls_primeiro_item-ps_psp_pnr IS NOT INITIAL ).
+                CHECK <fs_good> IS ASSIGNED.
+                error_in_data = 'X'.
+                CALL METHOD lr_data_changed->add_protocol_entry
+                  EXPORTING
+                    i_msgid     = '0K'
+                    i_msgty     = 'E'
+                    i_msgno     = '000'
+                    i_fieldname = <fs_good>-fieldname
+                    i_row_id    = <fs_good>-row_id
+                    i_msgv1     = 'Preencher apenas 1 tipo de Clasif. Contábil'.
+              ENDIF.
+
+              " valida se o cara informou mais de um obj de custo iguais
+              IF <fs_good> IS ASSIGNED.
+                lv_value      = <fs_good>-value    .
+                lv_row_id     = <fs_good>-row_id   .
+                lv_fieldname  = <fs_good>-fieldname.
+
+                me->valida_obj_custo_iguais(
+            EXPORTING
+              cs_value       = lv_value
+              cs_row_id      = lv_row_id
+              cs_fieldname   = lv_fieldname
+            CHANGING
+              lr_data_changed = lr_data_changed
+              error_in_data  = error_in_data       ).
+              ENDIF.
+
+            WHEN 'PS_PSP_PNR'.
+
+              IF ( <fs_zmmt0032>-kostl IS NOT INITIAL
+                OR <fs_zmmt0032>-nplnr IS NOT INITIAL
+                OR <fs_zmmt0032>-vornr IS NOT INITIAL
+                OR <fs_zmmt0032>-aufnr IS NOT INITIAL ).
+                CHECK <fs_good> IS ASSIGNED.
+                error_in_data = 'X'.
+                CALL METHOD lr_data_changed->add_protocol_entry
+                  EXPORTING
+                    i_msgid     = '0K'
+                    i_msgty     = 'E'
+                    i_msgno     = '000'
+                    i_fieldname = <fs_good>-fieldname
+                    i_row_id    = <fs_good>-row_id
+                    i_msgv1     = 'Preencher apenas 1 tipo de Clasif. Contábil'.
+              ENDIF.
+
+              IF ( ls_primeiro_item-kostl IS NOT INITIAL
+                OR ls_primeiro_item-nplnr IS NOT INITIAL
+                OR ls_primeiro_item-vornr IS NOT INITIAL
+                OR ls_primeiro_item-aufnr IS NOT INITIAL ).
+                CHECK <fs_good> IS ASSIGNED.
+                error_in_data = 'X'.
+                CALL METHOD lr_data_changed->add_protocol_entry
+                  EXPORTING
+                    i_msgid     = '0K'
+                    i_msgty     = 'E'
+                    i_msgno     = '000'
+                    i_fieldname = <fs_good>-fieldname
+                    i_row_id    = <fs_good>-row_id
+                    i_msgv1     = 'Preencher apenas 1 tipo de Clasif. Contábil'.
+              ENDIF.
+
+              " valida se o cara informou mais de um obj de custo iguais
+              IF <fs_good> IS ASSIGNED.
+                lv_value      = <fs_good>-value    .
+                lv_row_id     = <fs_good>-row_id   .
+                lv_fieldname  = <fs_good>-fieldname.
+
+                me->valida_obj_custo_iguais(
+            EXPORTING
+              cs_value       = lv_value
+              cs_row_id      = lv_row_id
+              cs_fieldname   = lv_fieldname
+            CHANGING
+              lr_data_changed = lr_data_changed
+              error_in_data  = error_in_data       ).
+              ENDIF.
+
+          ENDCASE.
+
+        ENDIF.
+
+      ENDIF.
+
+    ENDLOOP.
+
+    er_data_changed = lr_data_changed.
+
+    IF error_in_data = 'X'.
+      CALL METHOD er_data_changed->display_protocol.
+    ENDIF.
+
+    CLEAR lr_data_changed.
+
+    refresh_grid( ).
+
+  ENDMETHOD.                    "handle_data_changed
+
+  METHOD valida_obj_custo_iguais.
+
+    LOOP AT gt_class_contab ASSIGNING FIELD-SYMBOL(<ls_clas_contab>).
+
+      TRY.
+
+          ASSIGN COMPONENT cs_fieldname OF STRUCTURE <ls_clas_contab> TO FIELD-SYMBOL(<lv_value>).
+          IF <lv_value> IS ASSIGNED.
+            IF <lv_value> = cs_value.
+              error_in_data = 'X'.
+              CALL METHOD lr_data_changed->add_protocol_entry
+                EXPORTING
+                  i_msgid     = '0K'
+                  i_msgty     = 'E'
+                  i_msgno     = '000'
+                  i_fieldname = cs_fieldname
+                  i_row_id    = cs_row_id
+                  i_msgv1     = 'Este objeto de custo já foi informado!'.
+            ENDIF.
+          ENDIF.
+
+        CATCH cx_root.
+      ENDTRY.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD handle_data_changed_finished.
+    DATA: ls_cell    TYPE lvc_s_modi,
+          l_atualiza TYPE c,
+          l_cnt      TYPE i.
+    DESCRIBE TABLE gt_class_contab LINES l_cnt.
+
+    LOOP AT et_good_cells INTO ls_cell.
+      READ TABLE gt_class_contab ASSIGNING FIELD-SYMBOL(<fs_zmmt0032>) INDEX ls_cell-row_id.
+      IF sy-subrc = 0.
+        CASE ls_cell-fieldname.
+          WHEN 'PREIS'.
+            IF l_cnt = 1 AND <fs_zmmt0032>-preis = 0 AND gs_item_serv-preis > 0.
+              <fs_zmmt0032>-preis = gs_item_serv-vlr_tot.
+              <fs_zmmt0032>-vproz = 100.
+              l_atualiza = 'X'.
+            ENDIF.
+
+          WHEN 'VPROZ'.
+            IF <fs_zmmt0032>-vproz > 0.
+              <fs_zmmt0032>-preis = <fs_zmmt0032>-vproz * gs_item_serv-vlr_tot / 100.
+              l_atualiza = 'X'.
+            ENDIF.
+        ENDCASE.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.                    "handle_data_changed_finished
+
+  METHOD fill_celltab.
+    LOOP AT pt_celltab ASSIGNING FIELD-SYMBOL(<fs_fcat>).
+
+      IF <fs_fcat>-fieldname = 'KOSTL'. "p_fieldname.
+        <fs_fcat>-style = cl_gui_alv_grid=>mc_style_disabled.
+      ENDIF.
+
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD handle_toolbar.
+    DATA: ls_toolbar TYPE stb_button.
+
+    "Desabilita botões de inclusão de linhas
+    LOOP AT e_object->mt_toolbar INTO ls_toolbar.
+      IF ls_toolbar-function <> '&LOCAL&DELETE_ROW'
+     AND ls_toolbar-function <> '&CHECK'
+     AND ls_toolbar-function <> '&REFRESH'.
+        DELETE e_object->mt_toolbar INDEX sy-tabix.
+        CONTINUE.
+      ENDIF.
+
+      IF ( ls_toolbar-function = '&LOCAL&APPEND'
+              OR ls_toolbar-function = '&LOCAL&INSERT_ROW'
+              OR ls_toolbar-function = '&LOCAL&DELETE_ROW'
+              OR ls_toolbar-function = '&LOCAL&COPY_ROW' ).
+
+        MODIFY e_object->mt_toolbar FROM ls_toolbar.
+      ENDIF.
+    ENDLOOP.
+
+    CLEAR ls_toolbar.
+    MOVE 'APPEND' TO ls_toolbar-function.
+    MOVE '@0Y@' TO ls_toolbar-icon.
+    MOVE 'APPEND' TO ls_toolbar-quickinfo.
+    MOVE ' '  TO ls_toolbar-disabled.
+    APPEND ls_toolbar TO e_object->mt_toolbar.
+
+*    IF gs_header-banfn IS NOT INITIAL AND ( gs_item-frgkz = 'A' OR gs_item-frgkz = 'L' ).
+*      FREE e_object->mt_toolbar[].
+*    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD handle_user_command.
+
+    DATA: r_tabdescr    TYPE REF TO cl_abap_structdescr,
+          lt_components TYPE abap_component_tab.
+
+    CASE e_ucomm.
+      WHEN 'APPEND'.
+        APPEND INITIAL LINE TO gt_class_contab ASSIGNING FIELD-SYMBOL(<ls_class_contab>).
+
+        set_celltab( CHANGING celltab = <ls_class_contab>-celltab ).
+
+        IF lines( gt_class_contab ) = 1 AND <ls_class_contab>-preis = 0 AND gs_item_serv-preis > 0.
+          <ls_class_contab>-preis = gs_item_serv-vlr_tot.
+          <ls_class_contab>-vproz = 100.
+        ENDIF.
+
+        IF <ls_class_contab>-vproz > 0.
+          <ls_class_contab>-preis = <ls_class_contab>-vproz * gs_item_serv-vlr_tot / 100.
+        ENDIF.
+
+        CALL METHOD g_grid_0200->refresh_table_display.
+      WHEN OTHERS.
+    ENDCASE.
+
+  ENDMETHOD.
+
+  METHOD set_celltab.
+
+    DATA: r_tabdescr    TYPE REF TO cl_abap_structdescr,
+          lt_components TYPE abap_component_tab.
+
+    r_tabdescr ?= cl_abap_structdescr=>describe_by_data( gs_zmmt0032 ).
+
+    CALL METHOD r_tabdescr->get_components
+      RECEIVING
+        p_result = lt_components.
+
+    DATA(lra_enabled_fields) = get_enabled_field( gs_item-knttp ).
+
+    FREE celltab[].
+    LOOP AT lt_components ASSIGNING FIELD-SYMBOL(<ls_fcat>).
+
+      IF <ls_fcat>-name IN lra_enabled_fields[].
+        INSERT VALUE lvc_s_styl( style = cl_gui_alv_grid=>mc_style_enabled
+                                 fieldname = <ls_fcat>-name ) INTO TABLE celltab.
+      ELSE.
+        INSERT VALUE lvc_s_styl( style = cl_gui_alv_grid=>mc_style_disabled
+                                 fieldname = <ls_fcat>-name ) INTO TABLE celltab.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD get_enabled_field.
+
+    CASE i_knttp .
+      WHEN 'K'.
+        APPEND VALUE #( sign = 'I' option = 'EQ' low = 'KOSTL' ) TO rv_field.
+      WHEN 'F'.
+        APPEND VALUE #( sign = 'I' option = 'EQ' low = 'AUFNR' ) TO rv_field.
+      WHEN 'N'.
+        APPEND VALUE #( sign = 'I' option = 'EQ' low = 'NPLNR' ) TO rv_field.
+        APPEND VALUE #( sign = 'I' option = 'EQ' low = 'VORNR' ) TO rv_field.
+      WHEN 'P'.
+        APPEND VALUE #( sign = 'I' option = 'EQ' low = 'PS_PSP_PNR' ) TO rv_field.
+    ENDCASE.
+
+    APPEND VALUE #( sign = 'I' option = 'EQ' low = 'VPROZ' ) TO rv_field.
+
+  ENDMETHOD.
+
+  METHOD refresh_grid.
+    cl_gui_cfw=>flush( ).
+    g_grid_0200->refresh_table_display( ).
+
+  ENDMETHOD.
+
+ENDCLASS.               "lcl_event_receiver_0200
+
+CLASS zcl_itab_to_excel DEFINITION.
+  PUBLIC SECTION.
+    METHODS:
+      itab_to_xstring
+        IMPORTING ir_data_ref       TYPE REF TO data
+        RETURNING VALUE(rv_xstring) TYPE xstring.
+ENDCLASS.
+
+CLASS zcl_itab_to_excel IMPLEMENTATION.
+  METHOD itab_to_xstring.
+
+    FIELD-SYMBOLS: <fs_data> TYPE ANY TABLE.
+
+    CLEAR rv_xstring.
+    ASSIGN ir_data_ref->* TO <fs_data>.
+
+    TRY.
+        cl_salv_table=>factory(
+          IMPORTING r_salv_table = DATA(lo_table)
+          CHANGING  t_table      = <fs_data> ).
+
+        DATA(lt_fcat) =
+          cl_salv_controller_metadata=>get_lvc_fieldcatalog(
+            r_columns      = lo_table->get_columns( )
+            r_aggregations = lo_table->get_aggregations( ) ).
+
+        DATA(lo_result) =
+          cl_salv_ex_util=>factory_result_data_table(
+            r_data         = ir_data_ref
+            t_fieldcatalog = lt_fcat ).
+
+        cl_salv_bs_tt_util=>if_salv_bs_tt_util~transform(
+          EXPORTING
+            xml_type      = if_salv_bs_xml=>c_type_xlsx
+            xml_version   = cl_salv_bs_a_xml_base=>get_version( )
+            r_result_data = lo_result
+            xml_flavour   = if_salv_bs_c_tt=>c_tt_xml_flavour_export
+            gui_type      = if_salv_bs_xml=>c_gui_type_gui
+          IMPORTING
+            xml           = rv_xstring ).
+      CATCH cx_root.
+        CLEAR rv_xstring.
+    ENDTRY.
+
+  ENDMETHOD.
+ENDCLASS.
+
+DATA: g_event_receiver TYPE REF TO lcl_event_receiver.
+DATA: g_event_receiver_serv TYPE REF TO lcl_event_receiver_serv.
+DATA: g_event_receiver_0200 TYPE REF TO lcl_event_receiver_0200.
+DATA: g_itab_to_excel TYPE REF TO zcl_itab_to_excel.

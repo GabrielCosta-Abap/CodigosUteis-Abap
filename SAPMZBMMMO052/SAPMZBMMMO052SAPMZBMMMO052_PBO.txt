@@ -1,0 +1,609 @@
+*&---------------------------------------------------------------------*
+*&  Include           SAPMZBMMMO052_PBO
+*&---------------------------------------------------------------------*
+TABLES lfa1.
+
+SELECTION-SCREEN: BEGIN OF SCREEN 0001 AS SUBSCREEN.
+SELECT-OPTIONS so_lifnr FOR lfa1-lifnr NO INTERVALS MODIF ID det.
+SELECTION-SCREEN: END OF SCREEN 0001.
+
+AT SELECTION-SCREEN OUTPUT.
+  DATA lv_banfn TYPE banfn.
+  IMPORT lv_banfn = lv_banfn FROM MEMORY ID 'ZBANFN'.
+
+  IF lv_banfn IS NOT INITIAL.
+    gs_header-banfn =  lv_banfn.
+  ENDIF.
+
+  IF gs_header-banfn IS INITIAL.
+    PERFORM hide_det_escopo.
+  ELSE.
+    PERFORM show_det_escopo  USING gs_header-banfn.
+  ENDIF.
+
+MODULE init_tela OUTPUT.
+
+  DATA: lv_erro.
+  DATA lv_banfn TYPE banfn.
+
+  PERFORM preenche_dados_padrao_usuario.
+
+  PERFORM cria_listas_vazias.
+
+  PERFORM cria_header_text.
+
+  PERFORM cria_text_areas USING: g_editor_escopo g_container_escopo 'CC_ESCOPO',
+                                 g_editor_motivo_contratacao g_container_motivo_contratacao 'CC_MOTIVO_CONTRATACAO',
+                                 g_editor_justificativa g_container_justificativa 'CC_JUSTIFICATIVA',
+                                 g_editor_descricao_projeto g_container_descricao_projeto 'CC_DESCRICAO_PROJETO'.
+
+  IMPORT lv_banfn = lv_banfn FROM MEMORY ID 'ZBANFN'.
+  IF sy-subrc = 0 AND lv_banfn IS NOT INITIAL.
+    PERFORM seleciona_rc USING lv_banfn CHANGING lv_erro.
+    FREE MEMORY ID 'ZBANFN'.
+    PERFORM enter.
+  ENDIF.
+
+  "Inicia GRID
+  IF g_custom_container IS INITIAL.
+    CREATE OBJECT g_custom_container
+      EXPORTING
+        container_name = g_container.
+    CREATE OBJECT g_grid
+      EXPORTING
+        i_parent = g_custom_container.
+  ENDIF.
+
+  PERFORM fill_fcat USING g_fcat g_type 1.
+
+  IF gv_item_selected IS INITIAL.
+    PERFORM first_display USING gt_item g_grid g_fcat 1.
+  ENDIF.
+  CLEAR gv_item_selected .
+
+  CREATE OBJECT g_event_receiver.
+  SET HANDLER:  g_event_receiver->handle_data_changed FOR g_grid,
+                g_event_receiver->handle_user_command FOR g_grid,
+                g_event_receiver->on_f4 FOR g_grid,
+                g_event_receiver->handle_toolbar FOR g_grid.
+
+  g_grid->register_f4_for_fields(
+      it_f4 = VALUE #(
+          ( fieldname = 'TXT01' register = 'X' chngeafter = 'X' )
+       ) ).
+
+  CALL METHOD g_grid->set_toolbar_interactive.
+
+  CALL METHOD g_grid->set_ready_for_input
+    EXPORTING
+      i_ready_for_input = 1.
+
+  CALL METHOD g_grid->register_edit_event
+    EXPORTING
+      i_event_id = cl_gui_alv_grid=>mc_evt_enter
+    EXCEPTIONS
+      error      = 1.
+
+  CALL METHOD g_grid->register_edit_event
+    EXPORTING
+      i_event_id = cl_gui_alv_grid=>mc_evt_modified
+    EXCEPTIONS
+      error      = 1.
+*--------------------------------------------------------------------*
+
+  "Inicia GRID serv
+  IF g_custom_container_serv IS INITIAL.
+    CREATE OBJECT g_custom_container_serv
+      EXPORTING
+        container_name = g_container_serv.
+    CREATE OBJECT g_grid_serv
+      EXPORTING
+        i_parent = g_custom_container_serv.
+  ENDIF.
+
+  PERFORM fill_fcat USING g_fcat_serv g_type 2.
+
+  IF line_exists( gt_item_serv[ srvpos(3) = 'IMP' ] ).
+
+    LOOP AT gt_item_serv ASSIGNING FIELD-SYMBOL(<ls_item_serv>).
+
+      <ls_item_serv>-celltab = VALUE #( ( style     = cl_gui_alv_grid=>mc_style_enabled
+                                          fieldname = 'WAERS'  ) ).
+    ENDLOOP.
+
+  ELSE.
+
+    LOOP AT gt_item_serv ASSIGNING <ls_item_serv>.
+
+      <ls_item_serv>-celltab = VALUE #( ( style     = cl_gui_alv_grid=>mc_style_disabled
+                                          fieldname = 'WAERS'  ) ).
+    ENDLOOP.
+
+  ENDIF.
+
+  PERFORM first_display USING gt_item_serv g_grid_serv g_fcat_serv 2.
+
+  CREATE OBJECT g_event_receiver_serv.
+  SET HANDLER:  g_event_receiver_serv->handle_data_changed FOR g_grid_serv,
+                g_event_receiver_serv->handle_user_command FOR g_grid_serv,
+                g_event_receiver_serv->handle_hotspot_click FOR g_grid_serv,
+                g_event_receiver_serv->on_f4 FOR g_grid_serv,
+                g_event_receiver_serv->handle_toolbar FOR g_grid_serv.
+
+  g_grid_serv->register_f4_for_fields(
+      it_f4 = VALUE #(
+          ( fieldname = 'SRVPOS' register = 'X' chngeafter = 'X' )
+       ) ).
+
+
+  CALL METHOD g_grid_serv->set_ready_for_input
+    EXPORTING
+      i_ready_for_input = 1.
+
+  CALL METHOD g_grid_serv->register_edit_event
+    EXPORTING
+      i_event_id = cl_gui_alv_grid=>mc_evt_enter
+    EXCEPTIONS
+      error      = 1.
+
+  CALL METHOD g_grid_serv->register_edit_event
+    EXPORTING
+      i_event_id = cl_gui_alv_grid=>mc_evt_modified
+    EXCEPTIONS
+      error      = 1.
+
+  PERFORM preenche_bukrs_e_name_werks.
+
+  IF gs_header-banfn IS NOT INITIAL.
+
+*    READ TABLE gt_item INTO gs_item INDEX 1.
+*    IF gs_item-frgkz = 'A' OR gs_item-frgkz = 'L' .
+    PERFORM disable_fields.
+*    ENDIF.
+
+    PERFORM set_txt_editors_visibility  USING abap_true.
+    PERFORM toggle_enable_optional_fields.
+  ELSE.
+    PERFORM hide_det_escopo.
+  ENDIF.
+
+  PERFORM toggle_det_escopo.
+
+ENDMODULE.
+
+FORM toggle_enable_optional_fields.
+
+  DATA(lv_mot_input) = COND i( WHEN gs_header-zzmotivo_req IS INITIAL THEN 1
+                                                                      ELSE 0 ).
+
+  DATA(lv_mat_input) = COND i( WHEN gs_header-zzrcmatric IS INITIAL THEN 1
+                                                                    ELSE 0 ).
+
+  LOOP AT SCREEN.
+
+    IF screen-name = 'GS_HEADER-ZZMOTIVO_REQ'.
+      screen-input = lv_mot_input.
+    ELSEIF screen-name = 'GS_HEADER-ZZRCMATRIC'.
+      screen-input = lv_mat_input.
+    ENDIF.
+
+    MODIFY SCREEN.
+
+  ENDLOOP.
+
+ENDFORM.
+
+FORM toggle_det_escopo.
+
+  READ TABLE gt_item ASSIGNING FIELD-SYMBOL(<ls_item>) INDEX 1.
+  CHECK sy-subrc = 0.
+
+  DATA(lv_enable) = COND i( WHEN gs_header-status = '02' AND ( <ls_item>-frgkz EQ 'A' OR <ls_item>-frgkz EQ 'L' ) THEN 1
+                                                                                                                  ELSE 0 ).
+
+  g_editor_htext->set_readonly_mode( lv_enable ).
+
+  LOOP AT SCREEN.
+    IF screen-group1 = 'DET' OR screen-name = 'GS_HEADER-ZZMOTIVO_REQ'.
+      screen-input = COND #( WHEN lv_enable = 0 THEN 1 ELSE 0 ).
+      MODIFY SCREEN.
+    ENDIF.
+  ENDLOOP.
+
+  LOOP AT gt_text_editors ASSIGNING FIELD-SYMBOL(<ls_text_editor>).
+    <ls_text_editor>->set_readonly_mode( lv_enable ).
+  ENDLOOP.
+
+ENDFORM.
+
+FORM hide_det_escopo.
+
+  LOOP AT SCREEN.
+    IF screen-group1 = 'DET'.
+      screen-active = 0.
+      MODIFY SCREEN.
+    ENDIF.
+  ENDLOOP.
+
+  PERFORM set_txt_editors_visibility  USING abap_false.
+
+ENDFORM.
+
+FORM show_det_escopo USING pu_banfn TYPE banfn..
+
+  READ TABLE gt_item ASSIGNING FIELD-SYMBOL(<ls_item>) INDEX 1.
+  CHECK sy-subrc = 0.
+
+  SELECT SINGLE zstat_rtc FROM zbmmmt501 INTO gs_header-status WHERE banfn = gs_header-banfn.
+
+  LOOP AT SCREEN.
+    IF screen-group1 = 'DET'.
+      screen-active = 1.
+
+      IF gs_header-status = '02'
+     AND ( screen-name = 'SO_LIFNR-LOW' OR screen-name = 'GS_HEADER-ZZMOTIVO_REQ' )
+     AND ( <ls_item>-frgkz EQ 'A' OR <ls_item>-frgkz EQ 'L' ).
+        screen-input = 0.
+      ELSE.
+        screen-input = 1.
+      ENDIF.
+
+      MODIFY SCREEN.
+    ENDIF.
+  ENDLOOP.
+
+  PERFORM set_txt_editors_visibility  USING abap_true.
+
+  CHECK ok_code = 'EXIBIR' OR pu_banfn IS NOT INITIAL.
+  SELECT 'I' AS signn, 'EQ' AS option, lifnr AS lifnr FROM zbmmmt528 INTO TABLE @DATA(lt_lifnr) WHERE banfn = @gs_header-banfn.
+
+  IF sy-subrc = 0.
+    so_lifnr[] = lt_lifnr.
+  ENDIF.
+  CLEAR ok_code.
+
+ENDFORM.
+
+
+FORM set_txt_editors_visibility  USING pu_visible.
+
+  LOOP AT gt_text_editors ASSIGNING FIELD-SYMBOL(<ls_text_editor>).
+
+    <ls_text_editor>->set_visible(
+      EXPORTING
+        visible           =  pu_visible                " Visible
+      EXCEPTIONS
+        cntl_error        = 1                " CNTL_ERROR
+        cntl_system_error = 2                " CNTL_SYSTEM_ERROR
+        OTHERS            = 3
+    ).
+
+  ENDLOOP.
+
+ENDFORM.
+
+FORM preenche_dados_padrao_usuario.
+
+  IF gs_header IS INITIAL.
+    SELECT SINGLE *
+      FROM zbmmmt529
+      INTO CORRESPONDING FIELDS OF gs_header
+      WHERE uname = sy-uname.
+  ENDIF.
+
+ENDFORM.
+
+FORM disable_fields.
+
+  CALL METHOD g_grid->set_ready_for_input
+    EXPORTING
+      i_ready_for_input = 0.
+
+  CALL METHOD g_grid_serv->set_ready_for_input
+    EXPORTING
+      i_ready_for_input = 0.
+
+  CALL METHOD g_editor_htext->set_readonly_mode
+    EXPORTING
+      readonly_mode          = 1
+    EXCEPTIONS
+      error_cntl_call_method = 1
+      invalid_parameter      = 2
+      OTHERS                 = 3.
+
+  LOOP AT SCREEN.
+    IF screen-group1 <> 'DET'.
+      screen-input = 0.
+      MODIFY SCREEN.
+    ENDIF.
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+
+
+MODULE status_0100 OUTPUT.
+  DATA lt_ucomm TYPE TABLE OF sy-ucomm.
+*  IF gs_header-banfn IS NOT INITIAL.
+*    APPEND 'SAVE' TO lt_ucomm.
+*    SET PF-STATUS '0100' EXCLUDING lt_ucomm.
+*  ELSE.
+  SET PF-STATUS '0100' .
+*  ENDIF.
+  SET TITLEBAR 'TIT0100'.
+
+  ssn = 0001.
+
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0200  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0200 OUTPUT.
+  SET PF-STATUS '0200'.
+  SET TITLEBAR 'TIT0200'.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  INIT_0200  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE init_0200 OUTPUT.
+
+  FREE g_fcat_0200[].
+  FREE gt_class_contab[].
+
+  LOOP AT gs_item_serv-zmmt0032[] INTO DATA(ls_class_contab).
+    MOVE-CORRESPONDING ls_class_contab TO gs_class_contab.
+    lcl_event_receiver_0200=>set_celltab( CHANGING celltab = gs_class_contab-celltab ).
+
+    IF gs_class_contab-ps_psp_pnr IS NOT INITIAL.
+      CALL FUNCTION 'CONVERSION_EXIT_ABPSP_OUTPUT'
+        EXPORTING
+          input  = gs_class_contab-ps_psp_pnr
+        IMPORTING
+          output = gs_class_contab-ps_psp_pnr.
+    ENDIF.
+
+    APPEND gs_class_contab TO gt_class_contab.
+  ENDLOOP.
+  "Inicia GRID
+  IF g_custom_container_0200 IS INITIAL.
+    CREATE OBJECT g_custom_container_0200
+      EXPORTING
+        container_name = g_container_0200.
+    CREATE OBJECT g_grid_0200
+      EXPORTING
+        i_parent = g_custom_container_0200.
+
+*    g_layout-cwidth_opt = 'X'.
+
+    PERFORM fill_fcat_0200 USING g_fcat_0200 g_type.
+
+
+
+
+    PERFORM first_display0200 USING gt_class_contab
+                                    g_grid_0200
+                                    g_fcat_0200.
+
+    CREATE OBJECT g_event_receiver_0200.
+    SET HANDLER:  g_event_receiver_0200->handle_data_changed FOR g_grid_0200,
+                  g_event_receiver_0200->handle_data_changed_finished FOR g_grid_0200,
+                  g_event_receiver_0200->handle_user_command FOR g_grid_0200,
+                  g_event_receiver_0200->handle_toolbar FOR g_grid_0200.
+
+    CALL METHOD g_grid_0200->set_toolbar_interactive.
+
+    CALL METHOD g_grid_0200->register_edit_event
+      EXPORTING
+        i_event_id = cl_gui_alv_grid=>mc_evt_enter
+      EXCEPTIONS
+        error      = 1.
+
+    CALL METHOD g_grid_0200->register_edit_event
+      EXPORTING
+        i_event_id = cl_gui_alv_grid=>mc_evt_modified
+      EXCEPTIONS
+        error      = 1.
+  ELSE.
+*
+    cl_gui_cfw=>flush( ).
+    CALL METHOD g_grid_0200->refresh_table_display
+      EXCEPTIONS
+        finished = 1
+        OTHERS   = 2.
+  ENDIF.
+
+  IF gs_header-banfn IS INITIAL.
+    CALL METHOD g_grid_0200->set_ready_for_input
+      EXPORTING
+        i_ready_for_input = 1.
+  ELSE.
+    CALL METHOD g_grid_0200->set_ready_for_input
+      EXPORTING
+        i_ready_for_input = 0.
+  ENDIF.
+ENDMODULE.
+
+DATA: event_type(20) TYPE c.
+CLASS lcl_event_handler DEFINITION.
+  PUBLIC SECTION.
+    METHODS:
+      catch_dblclick FOR EVENT dblclick OF cl_gui_textedit
+        IMPORTING sender,
+
+      trata_bug_no_texto CHANGING ct_text TYPE catsxt_longtext_itab.
+    .
+
+ENDCLASS.
+
+DATA: event_handler TYPE REF TO lcl_event_handler.
+
+CLASS lcl_event_handler IMPLEMENTATION.
+  METHOD catch_dblclick.
+
+    DATA lt_text TYPE catsxt_longtext_itab.
+
+    CALL METHOD sender->get_text_as_stream
+      EXPORTING
+        only_when_modified     = cl_gui_textedit=>false
+      IMPORTING
+        text                   = lt_text
+      EXCEPTIONS
+        error_dp               = 1
+        error_cntl_call_method = 2
+        OTHERS                 = 3.
+
+    me->trata_bug_no_texto(
+      CHANGING ct_text = lt_text
+    ).
+
+    CALL FUNCTION 'CATSXT_SIMPLE_TEXT_EDITOR'
+      EXPORTING
+        im_title        = ''
+        im_start_column = 10
+        im_start_row    = 10
+      CHANGING
+        ch_text         = lt_text.
+
+    CHECK lt_text IS NOT INITIAL.
+    CALL METHOD sender->set_text_as_r3table
+      EXPORTING
+        table  = lt_text
+      EXCEPTIONS
+        OTHERS = 1.
+
+  ENDMETHOD.
+
+  METHOD trata_bug_no_texto.
+
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf IN TABLE ct_text WITH ''.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+FORM cria_header_text.
+
+  IF g_editor_htext IS INITIAL.
+
+    CREATE OBJECT g_container_htext
+      EXPORTING
+        container_name              = 'CC_HTEXT'
+      EXCEPTIONS
+        cntl_error                  = 1
+        cntl_system_error           = 2
+        create_error                = 3
+        lifetime_error              = 4
+        lifetime_dynpro_dynpro_link = 5.
+
+    CREATE OBJECT g_editor_htext
+      EXPORTING
+        parent                     = g_container_htext
+        wordwrap_mode              = cl_gui_textedit=>wordwrap_at_fixed_position
+        wordwrap_to_linebreak_mode = cl_gui_textedit=>true
+      EXCEPTIONS
+        OTHERS                     = 1.
+
+    g_editor_htext->register_event_dblclick(
+      EXPORTING
+        register                 = 1             " boolean like: TRUE/FALSE to register/deregister event
+        appl_event               = space            " default: system event
+        navigate_on_dblclick     = 0            " default: no local navigation on dblclick
+      EXCEPTIONS
+        error_regist_event       = 1                " Error while registering event double click
+        error_unregist_event     = 2                " Error while deregistering event double click
+        cntl_error               = 3                " Error: control not initialized
+        event_already_registered = 4                " Event is already registered
+        event_not_registered     = 5                " Event was not registered, thus deregistration makes no sense
+        OTHERS                   = 6
+    ).
+
+    CALL METHOD g_editor_htext->set_toolbar_mode
+      EXPORTING
+        toolbar_mode = '0'.
+
+    CALL METHOD g_editor_htext->set_statusbar_mode
+      EXPORTING
+        statusbar_mode         = 0            " visibility of statusbar; eq 0: OFF ; ne 0: ON
+      EXCEPTIONS
+        error_cntl_call_method = 1                " Error while setting visibility mode of status bar!
+        invalid_parameter      = 2                " INVALID_PARAMETER
+        OTHERS                 = 3.
+
+
+    DATA: g_event_receiver TYPE REF TO lcl_event_handler.
+    CREATE OBJECT g_event_receiver.
+    SET HANDLER g_event_receiver->catch_dblclick FOR g_editor_htext.
+
+  ENDIF.
+
+ENDFORM.
+
+FORM cria_text_areas CHANGING pu_editor           TYPE REF TO cl_gui_textedit
+                              pu_editor_container TYPE REF TO cl_gui_custom_container
+                              pu_container_name   .
+
+  IF pu_editor IS INITIAL.
+
+    CREATE OBJECT pu_editor_container
+      EXPORTING
+        container_name              = pu_container_name
+      EXCEPTIONS
+        cntl_error                  = 1
+        cntl_system_error           = 2
+        create_error                = 3
+        lifetime_error              = 4
+        lifetime_dynpro_dynpro_link = 5.
+
+    CREATE OBJECT pu_editor
+      EXPORTING
+        parent                     = pu_editor_container
+        wordwrap_mode              = cl_gui_textedit=>wordwrap_at_fixed_position
+        wordwrap_to_linebreak_mode = cl_gui_textedit=>true
+      EXCEPTIONS
+        OTHERS                     = 1.
+
+    pu_editor->register_event_dblclick(
+      EXPORTING
+        register                 = 1             " boolean like: TRUE/FALSE to register/deregister event
+        appl_event               = space            " default: system event
+        navigate_on_dblclick     = 0            " default: no local navigation on dblclick
+      EXCEPTIONS
+        error_regist_event       = 1                " Error while registering event double click
+        error_unregist_event     = 2                " Error while deregistering event double click
+        cntl_error               = 3                " Error: control not initialized
+        event_already_registered = 4                " Event is already registered
+        event_not_registered     = 5                " Event was not registered, thus deregistration makes no sense
+        OTHERS                   = 6
+    ).
+
+    CALL METHOD pu_editor->set_toolbar_mode
+      EXPORTING
+        toolbar_mode = '0'.
+
+    CALL METHOD pu_editor->set_statusbar_mode
+      EXPORTING
+        statusbar_mode         = 0            " visibility of statusbar; eq 0: OFF ; ne 0: ON
+      EXCEPTIONS
+        error_cntl_call_method = 1                " Error while setting visibility mode of status bar!
+        invalid_parameter      = 2                " INVALID_PARAMETER
+        OTHERS                 = 3.
+
+
+    DATA: g_event_receiver TYPE REF TO lcl_event_handler.
+    CREATE OBJECT g_event_receiver.
+    SET HANDLER g_event_receiver->catch_dblclick FOR pu_editor.
+
+    APPEND pu_editor TO gt_text_editors.
+
+  ENDIF.
+
+ENDFORM.

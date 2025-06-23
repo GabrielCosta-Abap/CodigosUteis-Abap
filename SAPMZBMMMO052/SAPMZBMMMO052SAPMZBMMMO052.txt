@@ -1,0 +1,15 @@
+*&---------------------------------------------------------------------*
+*& Modulpool  SAPMZBMMMO052
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+PROGRAM sapmzbmmmo052.
+
+INCLUDE sapmzbmmmo052_top.
+INCLUDE sapmzbmmmo052_g01.
+
+INCLUDE sapmzbmmmo052_pbo.
+INCLUDE sapmzbmmmo052_pai.
+INCLUDE sapmzbmmmo052_f01.

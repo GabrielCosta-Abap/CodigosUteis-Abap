@@ -1,0 +1,568 @@
+*&---------------------------------------------------------------------*
+*&  Include           SAPMZBMMMO052_F01
+*&---------------------------------------------------------------------*
+
+FORM enter.
+  CALL FUNCTION 'SAPGUI_SET_FUNCTIONCODE'
+    EXPORTING
+      functioncode           = '/00'
+    EXCEPTIONS
+      function_not_supported = 1.
+
+ENDFORM.
+
+FORM fill_fcat  USING g_fcat g_type pu_grid_index.
+
+  DATA: lt_fcat      TYPE lvc_t_fcat,
+        ls_fcat      TYPE lvc_s_fcat,
+        ls_dfies     TYPE dfies,
+        ls_item_serv TYPE zbmmme1124
+        .
+
+  DATA: r_tabdescr    TYPE REF TO cl_abap_structdescr,
+        t_dfies       TYPE ddfields,
+        lt_components TYPE abap_component_tab,
+        ls_component  TYPE abap_componentdescr,
+        r_element     TYPE REF TO cl_abap_elemdescr,
+        t_sub_dfies   TYPE ddfields.
+
+  FIELD-SYMBOLS: <table> TYPE STANDARD TABLE.
+
+  CASE g_type.
+    WHEN 'ITEM'.
+      IF pu_grid_index = 1.
+        r_tabdescr ?= cl_abap_structdescr=>describe_by_data( gs_item ).
+      ELSE.
+        r_tabdescr ?= cl_abap_structdescr=>describe_by_data( ls_item_serv ).
+      ENDIF.
+  ENDCASE.
+
+* lese Komponente
+  CALL METHOD r_tabdescr->get_components
+    RECEIVING
+      p_result = lt_components.
+
+* lese DFIES zu Komponente
+  LOOP AT lt_components INTO ls_component.
+
+*intern definierte Tabelle ohne include.
+    CASE ls_component-type->kind.
+
+      WHEN 'E'.
+        r_element ?= ls_component-type.
+        IF r_element->is_ddic_type( ) = abap_true.
+          ls_dfies = r_element->get_ddic_field( sy-langu ).
+          ls_dfies-reftable = ls_dfies-tabname.
+          ls_dfies-reffield = ls_dfies-fieldname.
+          CLEAR ls_dfies-precfield.
+          ls_dfies-fieldname = ls_component-name.
+          APPEND ls_dfies TO t_dfies.
+        ELSE.
+          CLEAR ls_dfies.
+          ls_dfies-fieldname = ls_component-name.
+          ls_dfies-inttype = r_element->type_kind.
+          ls_dfies-leng = r_element->length.
+          ls_dfies-decimals = r_element->decimals.
+          ls_dfies-convexit = r_element->edit_mask.
+          ls_dfies-outputlen = r_element->output_length.
+          ls_dfies-sign = 'X'.
+          APPEND ls_dfies TO t_dfies.
+        ENDIF.
+    ENDCASE.
+  ENDLOOP.
+
+
+* dfies Einträge in den Feldkatalog schreiben
+  LOOP AT t_dfies INTO ls_dfies.
+    ls_fcat-fieldname   =  ls_dfies-fieldname.
+    ls_fcat-datatype    = ls_dfies-datatype.
+    ls_fcat-inttype     = ls_dfies-inttype.
+    ls_fcat-intlen      = ls_dfies-leng.
+    ls_fcat-lowercase   = ls_dfies-lowercase.
+    ls_fcat-f4availabl  = ls_dfies-f4availabl.
+
+*    ls_fcat-scrtext_s = ls_dfies-scrtext_s.
+*    ls_fcat-scrtext_m = ls_dfies-scrtext_m.
+    ls_fcat-scrtext_l = ls_dfies-scrtext_l.
+
+    " Item RC
+    CASE ls_fcat-fieldname.
+      WHEN 'ZSTAT_RTC'.
+        ls_fcat-outputlen = 22.
+
+      WHEN 'FRGKZ'.
+        ls_fcat-coltext = 'Ind.Lib.'.
+        ls_fcat-scrtext_s = 'Ind.Lib.'.
+        ls_fcat-scrtext_m = 'Ind.Lib.'.
+        ls_fcat-scrtext_l = 'Ind.Lib.'.
+        ls_fcat-outputlen = 5.
+
+      WHEN 'BNFPO'.
+        ls_fcat-coltext = 'Item'.
+        ls_fcat-scrtext_s = 'Item'.
+        ls_fcat-scrtext_m = 'Item'.
+        ls_fcat-scrtext_l = 'Item'.
+
+      WHEN 'KNTTP'.
+        ls_fcat-coltext   = 'C'.
+        ls_fcat-scrtext_s = 'C'.
+        ls_fcat-scrtext_m = 'C'.
+        ls_fcat-scrtext_l = 'C'.
+        ls_fcat-edit = 'X'.
+        ls_fcat-ref_table = 'T163I'.
+        ls_fcat-ref_field = 'KNTTP'.
+        ls_fcat-outputlen = 5.
+
+      WHEN 'TXT01'.
+        ls_fcat-ref_table = 'EKPO'.
+        ls_fcat-ref_field = 'TXZ01'.
+        ls_fcat-coltext = 'Texto breve'.
+        ls_fcat-scrtext_l = 'Texto breve'.
+        ls_fcat-outputlen = 40.
+        ls_fcat-f4availabl = 'X'.
+        ls_fcat-edit = 'X'.
+
+      WHEN 'LFDAT'.
+        ls_fcat-ref_table = 'ZBMMME1123'.
+        ls_fcat-ref_field = 'LFDAT'.
+        ls_fcat-coltext = 'Data da necessidade do serviço'.
+        ls_fcat-scrtext_l = 'Data da necessidade do serviço'.
+        ls_fcat-outputlen = 30.
+        ls_fcat-f4availabl = 'X'.
+        ls_fcat-edit = 'X'.
+
+      WHEN 'MATKL'.
+        ls_fcat-coltext = 'Gp. Merc'.
+        ls_fcat-scrtext_l = 'Gp. Merc'.
+        ls_fcat-outputlen = 10.
+
+      WHEN 'EKNAM'.
+        ls_fcat-coltext = 'Desc. Gp Merc'.
+        ls_fcat-scrtext_l = 'Desc. Gp Merc'.
+
+    ENDCASE.
+
+    " Item serv
+    CASE ls_fcat-fieldname.
+      WHEN 'EXTROW'.
+        ls_fcat-coltext   = 'Item'.
+        ls_fcat-scrtext_s = 'Item'.
+        ls_fcat-scrtext_m = 'Item'.
+        ls_fcat-scrtext_l = 'Item'.
+
+      WHEN 'SRVPOS'.
+        ls_fcat-edit = 'X'.
+        ls_fcat-dd_outlen = 18.
+        ls_fcat-outputlen = 18.
+*        ls_fcat-ref_table = 'ZMME0034'.
+*        ls_fcat-ref_table = 'ASMD'.
+*        ls_fcat-ref_field = 'ASNUM'.
+*        ls_fcat-ref_field = 'SRVPOS'.
+        ls_fcat-f4availabl = 'X'.
+
+      WHEN 'KTEXT1'.
+        ls_fcat-coltext   = 'Desc. Serviço'.
+        ls_fcat-scrtext_s = 'Desc. Serviço'.
+        ls_fcat-scrtext_m = 'Desc. Serviço'.
+        ls_fcat-scrtext_l = 'Desc. Serviço'.
+
+      WHEN 'CLASS'.
+        ls_fcat-coltext   = 'Cssif.'.
+        ls_fcat-scrtext_s = 'Cssif.'.
+        ls_fcat-scrtext_m = 'Cssif.'.
+        ls_fcat-scrtext_l = 'Cssif.'.
+        ls_fcat-icon      = 'X'.
+        ls_fcat-hotspot   = 'X'.
+
+      WHEN 'MENGE'.
+        ls_fcat-edit = 'X'.
+        ls_fcat-decimals = 3.
+*        ls_fcat-outputlen = 18.
+
+      WHEN 'PREIS'.
+        ls_fcat-coltext   = 'Vlr.Uni'.
+        ls_fcat-scrtext_s = 'Vlr.Uni'.
+        ls_fcat-scrtext_m = 'Vlr.Uni'.
+        ls_fcat-scrtext_l = 'Vlr.Uni'.
+        ls_fcat-ref_field = 'ZBMMME1124'.
+        ls_fcat-ref_field = 'PREIS'.
+        ls_fcat-decimals = 2.
+*        ls_fcat-outputlen = 15.
+        ls_fcat-edit = 'X'.
+
+      WHEN 'WAERS'.
+        ls_fcat-outputlen = 5.
+*        ls_fcat-edit = 'X'.
+
+      WHEN 'VLR_TOT'.
+        ls_fcat-coltext   = 'Vt.Tot'.
+        ls_fcat-scrtext_s = 'Vt.Tot'.
+        ls_fcat-scrtext_m = 'Vt.Tot'.
+        ls_fcat-scrtext_l = 'Vt.Tot'.
+        ls_fcat-do_sum    = 'X'.
+
+      WHEN 'CAT_DEMANDA'.
+
+        ls_fcat-no_out = 'X'.
+
+    ENDCASE.
+
+    IF ls_dfies-sign IS INITIAL.
+      ls_fcat-no_sign = 'X'.
+    ENDIF.
+
+    APPEND ls_fcat TO lt_fcat.
+    CLEAR ls_fcat.
+  ENDLOOP.
+
+  IF pu_grid_index = 1.
+    g_fcat = lt_fcat.
+  ELSE.
+    g_fcat_serv = lt_fcat.
+  ENDIF.
+
+ENDFORM.                    " FILL_FCAT
+
+FORM first_display USING gt_outtab
+                         pu_grid_ref TYPE REF TO cl_gui_alv_grid
+                         pu_fcat
+                         pu_grid_index.
+
+  CLEAR g_layout.
+  IF NOT pu_grid_index = 1.
+    g_layout = VALUE #( col_opt = 'X' sel_mode = 'A' zebra = abap_true stylefname = 'CELLTAB'  ).
+  ENDIF.
+
+  CALL METHOD pu_grid_ref->set_table_for_first_display
+    EXPORTING
+*     i_save          = 'A'
+*     i_default       = 'X'
+      is_layout       = g_layout
+    CHANGING
+      it_outtab       = gt_outtab
+      it_fieldcatalog = pu_fcat.
+
+ENDFORM.
+
+FORM first_display0200 USING gt_outtab
+                         pu_grid_ref TYPE REF TO cl_gui_alv_grid
+                         pu_fcat.
+
+  g_layout = VALUE #( col_opt = 'X'
+                      stylefname = 'CELLTAB' ).
+
+  CALL METHOD pu_grid_ref->set_table_for_first_display
+    EXPORTING
+*     i_save          = 'A'
+*     i_default       = 'X'
+      is_layout       = g_layout
+    CHANGING
+      it_outtab       = gt_outtab
+      it_fieldcatalog = pu_fcat.
+
+ENDFORM.
+
+FORM fill_fcat_0200  USING    g_fcat g_type.
+
+  DATA: lt_fcat  TYPE lvc_t_fcat,
+        ls_fcat  TYPE lvc_s_fcat,
+        ls_dfies TYPE dfies.
+
+  DATA: r_tabdescr    TYPE REF TO cl_abap_structdescr,
+        t_dfies       TYPE ddfields,
+        lt_components TYPE abap_component_tab,
+        ls_component  TYPE abap_componentdescr,
+        r_element     TYPE REF TO cl_abap_elemdescr,
+        t_sub_dfies   TYPE ddfields.
+
+  FIELD-SYMBOLS: <table> TYPE STANDARD TABLE.
+
+  CASE g_type.
+    WHEN 'ITEM'.
+      r_tabdescr ?= cl_abap_structdescr=>describe_by_data( gs_zmmt0032 ).
+  ENDCASE.
+
+* lese Komponente
+  CALL METHOD r_tabdescr->get_components
+    RECEIVING
+      p_result = lt_components.
+
+* lese DFIES zu Komponente
+  LOOP AT lt_components INTO ls_component.
+
+*intern definierte Tabelle ohne include.
+    CASE ls_component-type->kind.
+
+      WHEN 'E'.
+        r_element ?= ls_component-type.
+        IF r_element->is_ddic_type( ) = abap_true.
+          ls_dfies = r_element->get_ddic_field( sy-langu ).
+          ls_dfies-reftable = ls_dfies-tabname.
+          ls_dfies-reffield = ls_dfies-fieldname.
+          CLEAR ls_dfies-precfield.
+          ls_dfies-fieldname = ls_component-name.
+          APPEND ls_dfies TO t_dfies.
+        ELSE.
+          CLEAR ls_dfies.
+          ls_dfies-fieldname = ls_component-name.
+          ls_dfies-inttype = r_element->type_kind.
+          ls_dfies-leng = r_element->length.
+          ls_dfies-decimals = r_element->decimals.
+          ls_dfies-convexit = r_element->edit_mask.
+          ls_dfies-outputlen = r_element->output_length.
+          ls_dfies-sign = 'X'.
+          APPEND ls_dfies TO t_dfies.
+        ENDIF.
+
+    ENDCASE.
+  ENDLOOP.
+
+  LOOP AT t_dfies INTO ls_dfies.
+    ls_fcat-fieldname   =  ls_dfies-fieldname.
+    ls_fcat-datatype    = ls_dfies-datatype.
+    ls_fcat-inttype     = ls_dfies-inttype.
+    ls_fcat-intlen      = ls_dfies-leng.
+    ls_fcat-lowercase   = ls_dfies-lowercase.
+    ls_fcat-f4availabl  = ls_dfies-f4availabl.
+    ls_fcat-scrtext_s = ls_dfies-scrtext_s.
+    ls_fcat-scrtext_m = ls_dfies-scrtext_m.
+    ls_fcat-scrtext_l = ls_dfies-scrtext_l.
+
+    CASE ls_fcat-fieldname.
+      WHEN 'MANDT'.
+        ls_fcat-no_out = 'X'.
+
+      WHEN 'NUMREG'.
+        ls_fcat-no_out = 'X'.
+
+      WHEN 'ITMREG'.
+        ls_fcat-no_out = 'X'.
+
+      WHEN 'SEQREG'.
+        ls_fcat-no_out = 'X'.
+
+      WHEN 'KNTTP'.
+        ls_fcat-no_out = 'X'.
+
+      WHEN 'KOSTL'.
+        ls_fcat-ref_table = 'ZMMT0032'.
+        ls_fcat-ref_field = 'KOSTL'.
+        ls_fcat-f4availabl = 'X'.
+        ls_fcat-edit = 'X'.
+*        ls_fcat-no_out = 'X'.
+*        IF gs_item-knttp = 'K'.
+*          ls_fcat-no_out = ''.
+*        ENDIF.
+
+      WHEN 'AUFNR'.
+        ls_fcat-ref_table = 'ZMMT0032'.
+        ls_fcat-ref_field = 'AUFNR'.
+        ls_fcat-f4availabl = 'X'.
+        ls_fcat-edit = 'X'.
+*        ls_fcat-no_out = 'X'.
+*        IF gs_item-knttp = 'F'.
+*          ls_fcat-no_out = ''.
+*        ENDIF.
+
+      WHEN 'NPLNR'.
+        ls_fcat-ref_table = 'ZMMT0032'.
+        ls_fcat-ref_field = 'NPLNR'.
+        ls_fcat-f4availabl = 'X'.
+        ls_fcat-edit = 'X'.
+*        ls_fcat-no_out = 'X'.
+*        IF gs_item-knttp = 'N'.
+*          ls_fcat-no_out = ''.
+*        ENDIF.
+
+      WHEN 'VORNR'.
+        ls_fcat-edit = 'X'.
+*        ls_fcat-no_out = 'X'.
+*        IF gs_item-knttp = 'P'.
+*          ls_fcat-no_out = ''.
+*        ENDIF.
+
+      WHEN 'PS_PSP_PNR'.
+*        ls_fcat-ref_table = 'ZMMT0032'.
+*        ls_fcat-ref_field = 'PS_PSP_PNR'.
+
+        ls_fcat-ref_table = 'COBL'.
+        ls_fcat-ref_field = 'PS_POSID'.
+
+*        ls_fcat-f4availabl = 'X'.
+*        ls_fcat-edit = 'X'.
+        ls_fcat-edit = 'X'.
+*        IF gs_item-knttp = 'P'.
+*          ls_fcat-edit = 'X'.
+*        ENDIF.
+
+      WHEN 'MENGE'.
+        ls_fcat-ref_table = 'ZMMT0032'.
+        ls_fcat-edit = 'X'.
+        ls_fcat-no_out = 'X'.
+
+      WHEN 'PREIS'.
+        ls_fcat-coltext = 'Vlr. Unit.'.
+        ls_fcat-scrtext_s = 'Vlr. Unit.'.
+        ls_fcat-scrtext_m = 'Vlr. Unit.'.
+        ls_fcat-scrtext_l = 'Vlr. Unit.'.
+        ls_fcat-ref_table = 'ZMMT0031'.
+
+      WHEN 'VPROZ'.
+        ls_fcat-ref_table = 'ZMMT0032'.
+        ls_fcat-edit      = 'X'.
+    ENDCASE.
+
+    ls_fcat-col_opt = 'X'.
+
+    IF ls_dfies-sign IS INITIAL.
+      ls_fcat-no_sign = 'X'.
+    ENDIF.
+
+    APPEND ls_fcat TO lt_fcat.
+    CLEAR ls_fcat.
+  ENDLOOP.
+
+  g_fcat_0200 = lt_fcat.
+
+ENDFORM.
+
+FORM limpa_tela.
+
+  CLEAR: gs_header, zbmmmt502. ", item_selected.
+  FREE: gt_item[], gt_item_serv[], so_lifnr[].
+
+  gs_header-werks = ''.
+
+  CALL METHOD g_grid->refresh_table_display
+    EXCEPTIONS
+      finished = 1
+      OTHERS   = 2.
+
+  CALL METHOD g_grid_serv->refresh_table_display
+    EXCEPTIONS
+      finished = 1
+      OTHERS   = 2.
+
+  g_editor_htext->delete_text( ).
+
+  CALL METHOD g_editor_htext->set_readonly_mode
+    EXPORTING
+      readonly_mode          = 0
+    EXCEPTIONS
+      error_cntl_call_method = 1
+      invalid_parameter      = 2
+      OTHERS                 = 3.
+
+  LOOP AT gt_text_editors ASSIGNING FIELD-SYMBOL(<lr_text_editor>).
+    <lr_text_editor>->delete_text( ).
+  ENDLOOP.
+
+ENDFORM.
+
+FORM cria_listas_vazias.
+
+  DATA lv_item TYPE bnfpo.
+  DATA lt_dd07v TYPE TABLE OF  dd07v.
+
+  CALL FUNCTION 'DD_DOMVALUES_GET'
+    EXPORTING
+      domname        = 'ZDO_STAT_RTC'
+      text           = 'X'
+      langu          = sy-langu
+    TABLES
+      dd07v_tab      = lt_dd07v
+    EXCEPTIONS
+      wrong_textflag = 1
+      OTHERS         = 2.
+
+  IF gt_item IS INITIAL.
+
+    DO 1 TIMES.
+      lv_item = lv_item + 10.
+      APPEND VALUE #( bnfpo = lv_item
+                      zstat_rtc = lt_dd07v[ domvalue_l = '00' ]-ddtext ) TO gt_item[].
+    ENDDO.
+
+  ENDIF.
+
+  lv_item = 0.
+  IF gt_item_serv IS INITIAL.
+
+    DO 5 TIMES.
+      lv_item = lv_item + 10.
+      APPEND VALUE #( extrow = lv_item ) TO gt_item_serv[].
+    ENDDO.
+
+  ENDIF.
+
+ENDFORM.
+
+FORM popup_confirm USING p_text   TYPE any
+                         p_title  TYPE any
+                CHANGING p_answer TYPE any.
+
+  CALL FUNCTION 'POPUP_TO_CONFIRM'
+    EXPORTING
+      titlebar              = p_title
+      text_question         = p_text
+      default_button        = '2'
+      display_cancel_button = abap_false
+      start_column          = 40
+      start_row             = 8
+    IMPORTING
+      answer                = p_answer
+    EXCEPTIONS
+      text_not_found        = 1
+      OTHERS                = 2.
+
+ENDFORM.
+
+FORM grava_texto_escopo USING is_zbmmmt502 TYPE zbmmmt502.
+
+  DATA: lt_texts TYPE zbmmmct2211,
+        ls_text  LIKE LINE OF lt_texts.
+
+  LOOP AT gt_text_editors ASSIGNING FIELD-SYMBOL(<lr_text>).
+
+    CASE sy-tabix.
+      WHEN 1.
+        ls_text-field_before = ''.
+        ls_text-label = 'Escopo'.
+      WHEN 2.
+        ls_text-field_before = 'ZETANEX'.
+        ls_text-label = 'Motivo da Contratação'.
+      WHEN 3.
+        ls_text-field_before = 'ZPRECOANEX'.
+        ls_text-label = 'Justificativa do não anexo da tabela de quantitativo e preço'.
+      WHEN 4.
+        ls_text-field_before = 'ZAREA'.
+        ls_text-label = 'Descrição do projeto'.
+      WHEN OTHERS.
+    ENDCASE.
+
+    ls_text-text = <lr_text>.
+    APPEND ls_text TO lt_texts.
+
+  ENDLOOP.
+
+  DATA(lt_field_exc) = VALUE /eacc/fieldnames( ( CONV #( 'BANFN' ) )
+                                               ( CONV #( 'BNFPO' ) ) ).
+
+  IF is_zbmmmt502-bnfpo IS INITIAL.
+    is_zbmmmt502-bnfpo = 10.
+  ENDIF.
+
+  DATA(ls_header) = VALUE thead( tdobject = 'EBAN'
+                                 tdname   = is_zbmmmt502-banfn && is_zbmmmt502-bnfpo
+                                 tdid     = 'B02'
+                                 tdspras  = sy-langu ).
+
+  CALL FUNCTION 'ZBMMMF603'
+    EXPORTING
+      iv_estrutura = 'ZBMMMT502'
+      is_thead     = ls_header
+      it_texts     = lt_texts
+      it_field_exc = lt_field_exc
+      ira_lifnr    = so_lifnr[].
+
+ENDFORM.

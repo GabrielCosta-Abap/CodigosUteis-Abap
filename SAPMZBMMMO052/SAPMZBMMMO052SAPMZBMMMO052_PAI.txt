@@ -1,0 +1,3040 @@
+*&---------------------------------------------------------------------*
+*&  Include           SAPMZBMMMO052_PAI
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0200  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+  MODULE user_command_0100 INPUT.
+    DATA lv_info_buttons TYPE string.
+
+    lv_info_buttons = 'ESC_INFO,MOTIVO_CON_INFO,TRAT_DADOS_PESSOAIS,COMPREC_DADOS_PESSOA,'
+                   && 'TRAT_NOME_ARCELOR,MOTFIN_TRAT_EXCLUSIV,COMPLIANCE_CONCES_DO,PRAZO_MESES'.
+    DATA: l_valid, l_answer.
+
+    CASE sy-ucomm.
+      WHEN 'NOVA'.
+        PERFORM limpa_tela.
+      WHEN 'SAVE'.
+        READ TABLE gt_item INTO gs_item INDEX 1.
+
+        IF gs_header-banfn IS INITIAL.
+
+          PERFORM valida_dados CHANGING l_valid.
+          IF l_valid = 'X'.
+            PERFORM cria_rc.
+          ENDIF.
+
+        ELSE.
+
+          PERFORM valida_dados CHANGING l_valid.
+          IF l_valid = 'X'.
+
+            PERFORM valida_det_escopo CHANGING l_valid.
+            IF l_valid = 'X'.
+              PERFORM salva_detalhamento_escopo.
+            ENDIF.
+
+          ENDIF.
+
+        ENDIF.
+
+      WHEN 'DOWNLOAD'.
+        PERFORM download_modelo_excel.
+
+      WHEN 'UPLOAD'.
+        PERFORM upload_excel.
+
+      WHEN 'LAYOUT'.
+        CALL TRANSACTION 'ZBMMM661'.
+
+      WHEN OTHERS.
+
+        IF lv_info_buttons CS sy-ucomm AND sy-ucomm IS NOT INITIAL.
+          PERFORM popup_info.
+        ENDIF.
+    ENDCASE.
+
+    CLEAR sy-ucomm.
+  ENDMODULE.
+
+  MODULE user_command_0200 INPUT.
+    DATA: l_validx TYPE c.
+    DATA ls_serv TYPE zbmmme1162.
+
+    CALL METHOD g_grid_0200->check_changed_data
+      IMPORTING
+        e_valid = l_validx.
+
+    FREE gs_item_serv-zmmt0032[].
+    LOOP AT gt_class_contab INTO DATA(ls_cc).
+      MOVE-CORRESPONDING ls_cc TO ls_serv.
+      APPEND ls_serv TO gs_item_serv-zmmt0032[].
+    ENDLOOP.
+    FREE gt_class_contab[].
+
+    READ TABLE gt_item ASSIGNING FIELD-SYMBOL(<ls_item>) WITH KEY bnfpo = item_selected.
+    IF sy-subrc = 0.
+      READ TABLE <ls_item>-t_item_serv ASSIGNING FIELD-SYMBOL(<ls_item_serv_deep>) WITH KEY extrow = gs_item_serv-extrow.
+      IF sy-subrc = 0.
+        <ls_item_serv_deep>-zmmt0032[] = gs_item_serv-zmmt0032[].
+      ENDIF.
+    ENDIF.
+
+    CASE ok_code.
+      WHEN 'OK'.
+        IF l_validx IS NOT INITIAL.
+          SET SCREEN 0.
+          LEAVE SCREEN.
+        ENDIF.
+      WHEN 'CANC'.
+        SET SCREEN 0.
+        LEAVE SCREEN.
+    ENDCASE.
+
+    CLEAR ok_code.
+    cl_gui_cfw=>flush( ).
+    g_grid_0200->refresh_table_display( ).
+  ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+  MODULE user_exit_command_0100 INPUT.
+
+    CASE sy-ucomm.
+      WHEN 'BACK' OR 'EXIT'.
+        SET SCREEN 0.
+        LEAVE SCREEN.
+      WHEN 'CANCEL'.
+        LEAVE PROGRAM.
+      WHEN 'EXIBIR'.
+        PERFORM exibir_rc.
+    ENDCASE.
+
+    CLEAR sy-ucomm.
+  ENDMODULE.
+
+  FORM exibir_rc.
+
+    DATA: lt_fields TYPE TABLE OF sval,
+          ls_fields TYPE sval,
+          l_erro    TYPE c.
+
+    lt_fields = VALUE #( ( tabname = 'ZBMMMT501'
+                           fieldname = 'BANFN' ) ).
+
+    CALL FUNCTION 'POPUP_GET_VALUES'
+      EXPORTING
+        popup_title = 'Regularização de Compras'
+      TABLES
+        fields      = lt_fields.
+    IF sy-subrc =  0.
+      READ TABLE lt_fields INTO ls_fields INDEX 1.
+      IF sy-subrc = 0 AND ls_fields-value IS NOT INITIAL.
+
+        PERFORM seleciona_rc USING ls_fields-value
+                              CHANGING l_erro.
+      ENDIF.
+    ENDIF.
+
+  ENDFORM.
+
+  FORM seleciona_rc USING pu_banfn
+                    CHANGING pc_erro.
+
+    CLEAR zbmmmt502.
+
+    PERFORM preenche_header USING pu_banfn
+                      CHANGING pc_erro.
+
+    PERFORM busca_header_text.
+
+    PERFORM bapi_get_detail USING pu_banfn
+                      CHANGING pc_erro.
+
+    PERFORM preenche_detalhamento_escopo USING pu_banfn.
+
+  ENDFORM.
+
+  FORM preenche_header USING pu_banfn
+                        CHANGING pc_erro.
+
+    DATA(lv_banfn) = CONV banfn( pu_banfn ).
+
+    CLEAR gs_header.
+    SELECT SINGLE *
+      FROM eban
+      INTO CORRESPONDING FIELDS OF gs_header_aux
+      WHERE banfn = lv_banfn.
+
+    IF sy-subrc = 0.
+      gs_header = gs_header_aux.
+    ENDIF.
+
+  ENDFORM.
+
+  FORM busca_header_text.
+    DATA lt_tline TYPE TABLE OF tline.
+    DATA lt_textlines TYPE TABLE OF tdline.
+
+    " Busca o texto de cabeçalho
+    CALL FUNCTION 'READ_TEXT'
+      EXPORTING
+        id                      = 'B01'
+        language                = sy-langu
+        name                    = CONV thead-tdname( gs_header_aux-banfn )
+        object                  = 'EBANH'
+      TABLES
+        lines                   = lt_tline
+      EXCEPTIONS
+        id                      = 1
+        language                = 2
+        name                    = 3
+        not_found               = 4
+        object                  = 5
+        reference_check         = 6
+        wrong_access_to_archive = 7
+        OTHERS                  = 8.
+
+    lt_textlines = VALUE #( FOR ls_line IN lt_tline ( ls_line-tdline ) ).
+
+    CALL METHOD g_editor_htext->set_text_as_r3table
+      EXPORTING
+        table  = lt_textlines
+      EXCEPTIONS
+        OTHERS = 1.
+
+  ENDFORM.
+
+  FORM bapi_get_detail USING pu_banfn
+                    CHANGING pc_erro.
+
+    DATA:
+      lt_items             TYPE TABLE OF bapieban,
+      lt_account           TYPE TABLE OF bapiebkn,
+      lt_services          TYPE TABLE OF bapiesll,
+      lt_srv_accass_values TYPE TABLE OF bapieskl,
+      lt_bapireturn        TYPE TABLE OF bapireturn.
+
+    CHECK gv_item_selected IS INITIAL.
+
+    FREE: gt_item[], gt_item_serv[].
+
+    SELECT SINGLE *
+      FROM zbmmmt501
+      INTO @DATA(gs_zbmmmt501)
+      WHERE banfn = @pu_banfn.
+
+    DATA: idd07v TYPE TABLE OF  dd07v WITH HEADER LINE.
+
+    CALL FUNCTION 'DD_DOMVALUES_GET'
+      EXPORTING
+        domname        = 'ZDO_STAT_RTC'   "<-- Your Domain Here
+        text           = 'X'
+        langu          = sy-langu
+      TABLES
+        dd07v_tab      = idd07v
+      EXCEPTIONS
+        wrong_textflag = 1
+        OTHERS         = 2.
+
+    TRY.
+        DATA(lv_stat) = idd07v[ domvalue_l = gs_zbmmmt501-zstat_rtc ]-ddtext.
+      CATCH cx_root.
+    ENDTRY.
+
+    CALL FUNCTION 'BAPI_REQUISITION_GETDETAIL'
+      EXPORTING
+        number                         = CONV banfn( pu_banfn )
+        account_assignment             = 'X'
+        services                       = 'X'
+      TABLES
+        requisition_items              = lt_items
+        requisition_account_assignment = lt_account
+        requisition_services           = lt_services
+        requisition_srv_accass_values  = lt_srv_accass_values
+        return                         = lt_bapireturn.
+
+    DELETE lt_items WHERE delete_ind IS NOT INITIAL.
+    DELETE lt_services WHERE delete_ind IS NOT INITIAL.
+    DELETE lt_account WHERE delete_ind IS NOT INITIAL.
+    DELETE lt_srv_accass_values WHERE delete_ind IS NOT INITIAL.
+
+*    IF lt_account IS NOT INITIAL.
+    SELECT ebeln,
+           ebelp,
+           packno,
+           waers
+      FROM eslh
+      INTO TABLE @DATA(lt_eslh)
+      FOR ALL ENTRIES IN @lt_services
+      WHERE packno = @lt_services-pckg_no.
+*    ENDIF.
+
+    SELECT matkl,
+           wgbez
+      FROM t023t
+      INTO TABLE @DATA(lt_t023t)
+      FOR ALL ENTRIES IN @lt_items
+      WHERE matkl = @lt_items-mat_grp
+        AND spras = @sy-langu.
+
+    LOOP AT lt_items INTO DATA(ls_bapieban).
+
+      CALL FUNCTION 'ME_ITEM_CATEGORY_OUTPUT'
+        EXPORTING
+          pstyp     = ls_bapieban-item_cat
+        IMPORTING
+          epstp     = ls_bapieban-item_cat
+        EXCEPTIONS
+          not_found = 1
+          OTHERS    = 2.
+
+      TRY.
+          DATA(lv_eknam) = lt_t023t[ matkl = ls_bapieban-mat_grp ]-wgbez.
+        CATCH cx_root.
+      ENDTRY.
+
+      APPEND VALUE #( zstat_rtc = lv_stat
+                      frgkz     = ls_bapieban-rel_ind
+                      bnfpo     = ls_bapieban-preq_item
+                      knttp     = ls_bapieban-acctasscat
+                      txt01     = ls_bapieban-short_text
+                      matkl     = ls_bapieban-mat_grp
+                      eknam     = lv_eknam
+                      lfdat     = ls_bapieban-deliv_date  ) TO gt_item[] ASSIGNING FIELD-SYMBOL(<ls_item_rc>).
+
+      DATA ls_item_serv LIKE LINE OF gt_item_serv[].
+      READ TABLE lt_services INTO DATA(ls_services_aux) WITH KEY pckg_no = ls_bapieban-pckg_no.
+      CHECK sy-subrc = 0.
+
+      PERFORM preenche_bukrs_e_name_werks.
+      get_parameter zbmmme1272 zbmmme1272 gs_header-bukrs '' ''.
+
+      LOOP AT lt_services INTO DATA(ls_services) WHERE pckg_no = ls_services_aux-subpckg_no.
+
+        ls_item_serv-extrow = ls_services-ext_line                                             .
+        ls_item_serv-srvpos = ls_services-service                                              .
+        ls_item_serv-ktext1 = ls_services-short_text                                           .
+        ls_item_serv-class = '@3W@'                                                            .
+        ls_item_serv-menge = ls_services-quantity                                              .
+*        ls_item_serv-waers = 'BRL'.
+        ls_item_serv-preis = ls_services-gr_price                                              .
+        ls_item_serv-vlr_tot = ls_services-net_value.                                     .
+
+        DATA(lv_value) = CONV char15( |{ ls_item_serv-srvpos ALPHA = OUT }| ).
+
+        " preenche cat demanda
+        LOOP AT ct_zbmmme1272 ASSIGNING FIELD-SYMBOL(<ls_1272>).
+
+          IF ( lv_value >= <ls_1272>-low AND lv_value <= <ls_1272>-high )
+          OR ( lv_value EQ <ls_1272>-low ).
+
+            ls_item_serv-cat_demanda = <ls_1272>-obs.
+            EXIT.
+
+          ENDIF.
+
+        ENDLOOP.
+
+        READ TABLE lt_eslh INTO DATA(ls_elsh) WITH KEY packno = ls_services_aux-subpckg_no.
+        IF sy-subrc = 0.
+
+          ls_item_serv-waers = ls_elsh-waers.
+
+          LOOP AT lt_srv_accass_values INTO DATA(ls_srv_accass_values) WHERE pckg_no = ls_services-pckg_no
+                                                                         AND line_no = ls_services-line_no.
+
+            LOOP AT lt_account INTO DATA(ls_account) WHERE preq_item = ls_elsh-ebelp
+                                                       AND serial_no = ls_srv_accass_values-serial_no.
+
+              APPEND VALUE #( kostl      = ls_account-cost_ctr
+                              aufnr      = ls_account-order_no
+                              nplnr      = ls_account-network
+                              vornr      = ls_account-activity
+                              ps_psp_pnr = ls_account-wbs_elem
+                              menge      = ls_srv_accass_values-quantity
+                              vproz      = ls_srv_accass_values-percentage
+                              preis      = ls_srv_accass_values-net_value
+                            ) TO ls_item_serv-zmmt0032[].
+
+            ENDLOOP.
+
+          ENDLOOP.
+
+        ENDIF.
+
+        APPEND CORRESPONDING #( ls_item_serv ) TO <ls_item_rc>-t_item_serv[]. "gt_item_serv[].
+        CLEAR ls_item_serv.
+
+      ENDLOOP.
+    ENDLOOP.
+
+    READ TABLE gt_item[] ASSIGNING <ls_item_rc> INDEX 1.
+    IF sy-subrc = 0.
+      item_selected = |{ <ls_item_rc>-bnfpo } - { <ls_item_rc>-txt01 }|.
+      gt_item_serv = CORRESPONDING #( <ls_item_rc>-t_item_serv[] ).
+    ENDIF.
+
+  ENDFORM.
+
+  FORM preenche_detalhamento_escopo USING pu_banfn.
+
+    "preenche campos
+    DATA(lv_banfn) =  CONV banfn( pu_banfn ).
+    SELECT SINGLE * FROM zbmmmt502 INTO zbmmmt502 WHERE banfn = lv_banfn.
+
+    PERFORM preenche_textos.
+
+*    " preenche fornecedores.
+*    SELECT 'I', 'EQ', lifnr FROM zbmmmt528 INTO TABLE @so_lifnr[] WHERE banfn = @lv_banfn.
+
+  ENDFORM.
+
+  FORM preenche_textos.
+    CONSTANTS lc_id TYPE tdid VALUE 'Y'.
+    DATA lv_id TYPE tdid.
+    DATA(lv_count) = CONV numc3( 0 ).
+    DATA lt_tline TYPE TABLE OF tline.
+    DATA lt_textlines TYPE TABLE OF tdline.
+
+    LOOP AT gt_text_editors ASSIGNING FIELD-SYMBOL(<ls_text_editor>).
+      ADD 1 TO lv_count.
+      lv_id = lc_id && lv_count.
+
+      FREE lt_tline[].
+
+      DATA(lv_tdname) = CONV tdobname( gs_header_aux-banfn && gs_zbmmmt502-bnfpo ).
+      CALL FUNCTION 'READ_TEXT'
+        EXPORTING
+          id                      = lv_id
+          language                = sy-langu
+          name                    = lv_tdname
+          object                  = 'YRTC'
+        TABLES
+          lines                   = lt_tline
+        EXCEPTIONS
+          id                      = 1
+          language                = 2
+          name                    = 3
+          not_found               = 4
+          object                  = 5
+          reference_check         = 6
+          wrong_access_to_archive = 7
+          OTHERS                  = 8.
+
+      lt_textlines = VALUE #( FOR ls_line IN lt_tline ( ls_line-tdline ) ).
+
+      CALL METHOD <ls_text_editor>->set_text_as_r3table
+        EXPORTING
+          table  = lt_textlines
+        EXCEPTIONS
+          OTHERS = 1.
+
+    ENDLOOP.
+
+  ENDFORM.
+
+  FORM valida_dados CHANGING p_valid.
+
+    TYPES ty_char132(132) TYPE c.
+    DATA: lv_valor_rc TYPE wertv8,
+          lv_prazo    TYPE zdertc_prazo.
+
+    CONSTANTS lc_obg_fields TYPE string VALUE 'WERKS EKORG EKGRP AFNAM ZZMOTIVO_REQ ZZRCMATRIC'.
+    DATA dfies TYPE TABLE OF dfies.
+    DATA lt_text TYPE TABLE OF ty_char132.
+
+    p_valid = 'X'.
+    CALL FUNCTION 'DDIF_NAMETAB_GET'
+      EXPORTING
+        tabname   = 'ZBMMME1132'
+      TABLES
+        dfies_tab = dfies
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+
+    SELECT rollname,
+           scrtext_m
+      FROM dd04t
+      INTO TABLE @DATA(lt_dd04t)
+      FOR ALL ENTRIES IN @dfies
+           WHERE rollname   = @dfies-rollname
+             AND ddlanguage = @sy-langu
+             AND as4local   = 'A'.
+
+    " Valida campos obrigatórios
+    CALL FUNCTION 'MESSAGES_INITIALIZE'.
+    LOOP AT dfies INTO DATA(ls_dfies).
+
+      CHECK lc_obg_fields CS ls_dfies-fieldname.
+
+      ASSIGN COMPONENT ls_dfies-fieldname OF STRUCTURE gs_header TO FIELD-SYMBOL(<lv_value>).
+      CHECK sy-subrc = 0.
+
+      DATA(lv_msgv1) = lt_dd04t[ rollname = ls_dfies-rollname ]-scrtext_m.
+
+      IF <lv_value> IS INITIAL.
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '002' "Campo &1 obrigatório!
+            zeile                  = ' '
+            msgv1                  = lv_msgv1
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+      ENDIF.
+
+    ENDLOOP.
+
+    " Valida mot
+    IF gs_header-zzmotivo_req IS NOT INITIAL.
+      get_parameter zbmmme857 zbmmme857 'GERA' '' ''.
+      READ TABLE ct_zbmmme857 INTO DATA(ls_zbmmme857) WITH KEY bsart = 'YSAC'
+                                                               motivo_req = gs_header-zzmotivo_req.
+      IF sy-subrc <> 0.
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '010' " Motivo RC inválido
+            zeile                  = ' '
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+      ENDIF.
+    ENDIF.
+
+    " Valida matrícula
+    IF gs_header-zzrcmatric IS NOT INITIAL.
+      DATA lv_name TYPE zbme_rcmatric_desc.
+      CALL FUNCTION 'ZMMF_VALIDA_MATRICULA_RC'
+        EXPORTING
+          i_zzrcmatric               = gs_header-zzrcmatric
+        IMPORTING
+          o_name                     = lv_name
+        EXCEPTIONS
+          erro_atualizar_matricula   = 1
+          erro_matricula_solicitante = 2
+          erro_matricula_funcionario = 3
+          erro_parametro_zbmmme1071  = 4
+          OTHERS                     = 5.
+      IF sy-subrc <> 0.
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '011' " Matrícula informada é inválida.
+            zeile                  = ' '
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+      ENDIF.
+    ENDIF.
+
+    DATA(lv_motreq) = CONV char4( gs_header-zzmotivo_req ).
+    get_parameter zbmmme1143 zbmmme1143 gs_header-bukrs '' lv_motreq.
+    IF ct_zbmmme1143 IS INITIAL.
+      get_parameter zbmmme1143_space zbmmme1143 gs_header-bukrs '' ''.
+      ct_zbmmme1143[] = ct_zbmmme1143_space[].
+    ENDIF.
+
+    get_parameter zbmmme1196 zbmmme1196 'GERA' '' ''.
+
+    LOOP AT gt_item INTO DATA(ls_item) WHERE matkl IS NOT INITIAL.
+
+      " Valida Grp. mercadoria
+      READ TABLE ct_zbmmme1143 INTO DATA(ls_zbmmme1143) WITH KEY matkl = ls_item-matkl.
+      IF sy-subrc <> 0.
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '012' " Grp. Mercadoria não permitido!
+            zeile                  = ls_item-bnfpo
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+
+      ENDIF.
+
+    ENDLOOP.
+
+    SELECT asnum, matkl
+      FROM asmd
+      INTO TABLE @DATA(lt_asmd)
+      FOR ALL ENTRIES IN @gt_item_serv
+      WHERE asnum = @gt_item_serv-srvpos.
+
+    LOOP AT lt_asmd TRANSPORTING NO FIELDS WHERE matkl <> ls_item-matkl.
+
+      READ TABLE ct_zbmmme1196 INTO cs_zbmmme1196 WITH KEY fieldname = '022'.
+      IF sy-subrc = 0.
+        DATA(lv_msgty) = cs_zbmmme1196-field_content.
+      ELSE.
+        lv_msgty = 'E'.
+      ENDIF.
+
+      CALL FUNCTION 'MESSAGE_STORE'
+        EXPORTING
+          arbgb                  = 'ZBMMM_RTC'
+          msgty                  = lv_msgty
+          txtnr                  = '022' " Os códigos de serviço devem ser do mesmo grupo de Mercadorias.
+          zeile                  = ls_item-bnfpo
+        EXCEPTIONS
+          message_type_not_valid = 1
+          not_active             = 2
+          OTHERS                 = 3.
+      IF lv_msgty = 'E'.
+        p_valid = ''.
+      ENDIF.
+
+    ENDLOOP.
+
+    LOOP AT gt_item INTO ls_item WHERE knttp <> 'U'.
+      LOOP AT ls_item-t_item_serv INTO DATA(ls_item_serv) WHERE srvpos IS NOT INITIAL.
+        IF ls_item_serv-zmmt0032 IS INITIAL.
+          CALL FUNCTION 'MESSAGE_STORE'
+            EXPORTING
+              arbgb                  = 'ZBMMM_RTC'
+              msgty                  = 'E'
+              txtnr                  = '013' " Preencher class. contábil para o item &
+              msgv1                  = ls_item_serv-extrow
+              zeile                  = ls_item_serv-extrow
+            EXCEPTIONS
+              message_type_not_valid = 1
+              not_active             = 2
+              OTHERS                 = 3.
+          p_valid = ''.
+        ENDIF.
+      ENDLOOP.
+    ENDLOOP.
+
+    LOOP AT gt_item INTO ls_item WHERE knttp IS NOT INITIAL.
+
+      LOOP AT ls_item-t_item_serv TRANSPORTING NO FIELDS WHERE srvpos IS NOT INITIAL.
+        EXIT.
+      ENDLOOP.
+
+      IF sy-subrc <> 0.
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '014' " Informar item de serviço para o item &
+            msgv1                  = ls_item-bnfpo
+            zeile                  = ls_item-bnfpo
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+      ENDIF.
+
+
+      IF ls_item-lfdat IS INITIAL.
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '016' " Obrigatório: &
+            msgv1                  = 'Data da necessidade'
+            msgv2                  = ' do serviço'
+            zeile                  = ls_item-bnfpo
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+      ENDIF.
+
+    ENDLOOP.
+
+    LOOP AT gt_item INTO ls_item.
+
+      READ TABLE ls_item-t_item_serv INTO DATA(ls_item_serv_aux) INDEX 1.
+
+      LOOP AT ls_item-t_item_serv INTO ls_item_serv WHERE waers IS INITIAL
+                                                      AND srvpos IS NOT INITIAL.
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '016' " Obrigatório: &
+            zeile                  = ls_item_serv-extrow
+            msgv1                  = 'Moeda'
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+        EXIT.
+
+      ENDLOOP.
+
+      LOOP AT ls_item-t_item_serv INTO ls_item_serv WHERE waers <> ls_item_serv_aux-waers
+                                                      AND waers IS NOT INITIAL
+                                                      AND srvpos IS NOT INITIAL.
+
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '025' " Todos os itens devem ter a mesma moeda
+            zeile                  = ls_item_serv_aux-extrow
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+        EXIT.
+
+      ENDLOOP.
+
+*      LOOP AT ls_item-t_item_serv INTO ls_item_serv WHERE cat_demanda <> ls_item_serv_aux-cat_demanda
+*                                                      AND cat_demanda IS NOT INITIAL.
+*
+*        CALL FUNCTION 'MESSAGE_STORE'
+*          EXPORTING
+*            arbgb                  = 'ZBMMM_RTC'
+*            msgty                  = 'E'
+*            txtnr                  = '029' " Todos os Serviços devem ser da mesma categoria de demanda
+*            zeile                  = ls_item_serv-extrow
+*          EXCEPTIONS
+*            message_type_not_valid = 1
+*            not_active             = 2
+*            OTHERS                 = 3.
+*        p_valid = ''.
+*        EXIT.
+*
+*      ENDLOOP.
+
+    ENDLOOP.
+
+    READ TABLE ct_zbmmme857 INTO ls_zbmmme857 WITH KEY bsart = 'YSAC'
+                                                             motivo_req = gs_header-zzmotivo_req
+                                                             motivo_req_obrig = 'X'.
+    IF sy-subrc = 0.
+
+      g_editor_htext->get_text_as_stream(
+        IMPORTING
+          text        = lt_text
+        EXCEPTIONS
+          error_dp               = 1
+          error_cntl_call_method = 2
+          OTHERS                 = 3
+      ).
+
+      IF lt_text IS INITIAL.
+
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '015' " Preencher a justificativa da solicitação!
+            zeile                  = ' '
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+
+      ENDIF.
+    ENDIF.
+
+    CALL FUNCTION 'MESSAGES_STOP'
+      EXCEPTIONS
+        a_message = 04
+        e_message = 03
+        i_message = 02
+        w_message = 01.
+    IF NOT sy-subrc IS INITIAL.
+      CALL FUNCTION 'MESSAGES_SHOW'
+        EXPORTING
+          i_use_grid         = 'X'
+          i_amodal_window    = ''
+        EXCEPTIONS
+          inconsistent_range = 1
+          no_messages        = 2
+          OTHERS             = 3.
+    ENDIF.
+
+    CHECK p_valid IS NOT INITIAL
+      AND gs_header-zzmotivo_req <> 'M04'
+      AND gs_header-zzmotivo_req <> 'M05'
+      AND gs_header-zzmotivo_req <> 'M07'.
+
+    DATA(lv_idneg_1181) = CONV char4( gs_item-knttp )."WHEN ls_item_serv_aux-cat_demanda = 'CAPEX' THEN 'CAPX' ELSE space ).
+
+    get_parameter zbmmme1181 zbmmme1181 'GERA' '' lv_idneg_1181.
+    IF ct_zbmmme1181[] IS INITIAL.
+      get_parameter zbmmme1181_b zbmmme1181 'GERA' '' ''.
+      ct_zbmmme1181[] = ct_zbmmme1181_b[].
+    ENDIF.
+
+    SORT ct_zbmmme1181 BY seq.
+
+    PERFORM calcula_total_item CHANGING lv_valor_rc.
+
+    " converte pra dolar.
+    PERFORM currency_conversion USING sy-datum
+                                      ls_item_serv_aux-waers
+                             CHANGING lv_valor_rc.
+    CLEAR lv_prazo.
+    LOOP AT ct_zbmmme1181 INTO DATA(ls_1181).
+
+      PERFORM calcula_prazo USING lv_valor_rc ls_1181-sign ls_1181-valor ls_1181-prazo
+                         CHANGING lv_prazo.
+
+      IF lv_prazo IS NOT INITIAL.
+        EXIT.
+      ENDIF.
+
+    ENDLOOP.
+
+    DATA(lv_lead_time) = CONV dats( sy-datum + lv_prazo ).
+
+    IF gs_item-lfdat < lv_lead_time
+   AND gs_header-zzmotivo_req <> 'M04'
+   AND gs_header-zzmotivo_req <> 'M05'.
+
+      DATA(lv_message) = |Data da necessidade, { gs_item-lfdat DATE = USER }, inferior ao lead time de suprimentos { lv_lead_time DATE = USER } (conforme PPA-SUP-010).|
+                      && |Deseja alterar a modalidade da demanda para: M04 – Emergência?|.
+
+      DATA lv_ans.
+      CALL FUNCTION 'POPUP_TO_CONFIRM'
+        EXPORTING
+          titlebar              = 'Atenção!!! '
+          text_question         = lv_message
+          text_button_1         = 'Sim'
+          icon_button_1         = 'ICON_CHECKED'
+          text_button_2         = 'Não'
+          icon_button_2         = 'ICON_CANCEL'
+          display_cancel_button = ''
+          popup_type            = 'ICON_MESSAGE_ERROR'
+        IMPORTING
+          answer                = lv_ans.
+
+      IF lv_ans = 1.
+        gs_header-zzmotivo_req = 'M04'.
+      ELSE.
+        READ TABLE gt_item ASSIGNING FIELD-SYMBOL(<ls_item>) INDEX 1.
+        IF sy-subrc = 0.
+
+          CALL FUNCTION 'POPUP_TO_CONFIRM'
+            EXPORTING
+              titlebar              = 'Atenção!!! '
+              text_question         = |Deseja alterar a data da necessidade conforme o lead time de suprimentos ({ lv_lead_time DATE = USER })?|
+              text_button_1         = 'Sim'
+              icon_button_1         = 'ICON_CHECKED'
+              text_button_2         = 'Não'
+              icon_button_2         = 'ICON_CANCEL'
+              display_cancel_button = ''
+              popup_type            = 'ICON_MESSAGE_ERROR'
+            IMPORTING
+              answer                = lv_ans.
+          IF lv_ans = 1.
+            <ls_item>-lfdat = lv_lead_time.
+          ENDIF.
+
+        ENDIF.
+      ENDIF.
+
+      p_valid = ''.
+
+    ENDIF.
+
+  ENDFORM.
+
+  FORM currency_conversion  USING    p_date
+                                     p_fcurr TYPE tcurr-fcurr
+                            CHANGING p_value.
+
+    DATA: t_er         TYPE tcurr-ukurs,
+          t_ff         TYPE tcurr-ffact,
+          t_lf         TYPE tcurr-tfact,
+          t_vfd        TYPE datum,
+          ld_erate(12) TYPE c.
+
+    CALL FUNCTION 'CONVERT_TO_LOCAL_CURRENCY'
+      EXPORTING
+        date             = p_date
+        foreign_amount   = p_value
+        foreign_currency = p_fcurr
+        local_currency   = CONV tcurr-tcurr( 'USD' )
+      IMPORTING
+        local_amount     = p_value
+      EXCEPTIONS
+        no_rate_found    = 1
+        overflow         = 2
+        no_factors_found = 3
+        no_spread_found  = 4
+        OTHERS           = 5.
+
+  ENDFORM.                    " currency_conversion
+
+  FORM valida_det_escopo CHANGING p_valid.
+
+    DATA: lv_msgv2 TYPE bapiret2-message_v1,
+          lv_msgv3 TYPE bapiret2-message_v1,
+          lv_msgv4 TYPE bapiret2-message_v1.
+
+    DATA lv_obg_fields TYPE string.
+    lv_obg_fields = 'ZETANEX,ZCATDEM,ZPRASER,ZCONTPED,ZCONTPED,ZGESCON,ZGESTEC,ZFORNEC,ZVISTEC,ZPRECOANEX,ZLOCPRE'
+                 && ',ZCONCOM,ZCONAPOL,ZTEMPOR,ZCRITICI,ZGARMIN,ZPESSOAL,ZAPROV,ZLOCACAO,ZOUTRATX,ZVLRIMOVEL,ZAREA'
+                 && ',ZMODALI,ZDOLREF'.
+
+    DATA dfies TYPE TABLE OF dfies.
+    TYPES ty_char132(132) TYPE c.
+
+    DATA ls_check_texts TYPE ty_check_texts.
+    DATA lt_check_texts TYPE tt_check_texts.
+    DATA lt_text TYPE TABLE OF ty_char132.
+    DATA lt_tlines TYPE TABLE OF tline.
+    DATA ls_header TYPE thead.
+    DATA t_message TYPE symsg.
+    DATA(ls_objkey) = VALUE borident( objkey  = gs_header-banfn
+                                      objtype = 'BUS2105' ).
+    p_valid = 'X'.
+    CALL FUNCTION 'DDIF_NAMETAB_GET'
+      EXPORTING
+        tabname   = 'ZBMMMT502'
+      TABLES
+        dfies_tab = dfies
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+
+    SELECT rollname,
+           scrtext_m,
+           scrtext_l
+      FROM dd04t
+      INTO TABLE @DATA(lt_dd04t)
+      FOR ALL ENTRIES IN @dfies
+           WHERE rollname   = @dfies-rollname
+             AND ddlanguage = @sy-langu
+             AND as4local   = 'A'.
+
+    SELECT *
+      FROM srgbtbrel
+    INTO TABLE @DATA(lt_anexos)
+     WHERE reltype  EQ 'ATTA'
+       AND instid_a EQ @gs_header-banfn  " (suppose that variable us_banfn holds the purchase requisition number)
+       AND typeid_a EQ 'BUS2105'
+       AND catid_a EQ 'BO'.
+
+    DATA(lv_motreq) = CONV char4( gs_header-zzmotivo_req ).
+    get_parameter zbmmme1143 zbmmme1143 gs_header-bukrs '' lv_motreq.
+    IF ct_zbmmme1143 IS INITIAL.
+      get_parameter zbmmme1143_space zbmmme1143 gs_header-bukrs '' ''.
+      ct_zbmmme1143[] = ct_zbmmme1143_space[].
+    ENDIF.
+
+    " Valida campos obrigatórios
+    CALL FUNCTION 'MESSAGES_INITIALIZE'.
+    LOOP AT dfies INTO DATA(ls_dfies).
+
+      READ TABLE ct_zbmmme1143 TRANSPORTING NO FIELDS WITH KEY matkl = gs_item-matkl
+                                                            zcriterio = ls_dfies-fieldname
+                                                            zobriga = 'X'.
+      CHECK sy-subrc = 0
+        AND ls_dfies-fieldname <> 'PS_PSP_PNR'
+        AND ls_dfies-fieldname <> 'ZJUSTUIF'.
+
+      ASSIGN COMPONENT ls_dfies-fieldname OF STRUCTURE zbmmmt502 TO FIELD-SYMBOL(<lv_value>).
+      CHECK sy-subrc = 0.
+
+      DATA(lv_msgv1) = lt_dd04t[ rollname = ls_dfies-rollname ]-scrtext_l.
+
+      IF <lv_value> IS INITIAL.
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '016' "Obrigatório: &
+            zeile                  = ' '
+            msgv1                  = lv_msgv1
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+      ELSE.
+
+        DATA(lv_type) = cl_abap_typedescr=>describe_by_data( <lv_value> ).
+        IF NOT lv_type->type_kind = 'C'.
+          CONTINUE.
+        ENDIF.
+
+        IF <lv_value> = 'S'.
+
+          CASE ls_dfies-fieldname.
+            WHEN 'ZCONTPED'.
+              IF zbmmmt502-ebeln IS INITIAL.
+                lv_msgv1 = |Doc. Referência|.
+                CALL FUNCTION 'MESSAGE_STORE'
+                  EXPORTING
+                    arbgb                  = 'ZBMMM_RTC'
+                    msgty                  = 'E'
+                    txtnr                  = '016' "Obrigatório: &
+                    zeile                  = ' '
+                    msgv1                  = lv_msgv1
+                  EXCEPTIONS
+                    message_type_not_valid = 1
+                    not_active             = 2
+                    OTHERS                 = 3.
+                p_valid = ''.
+              ENDIF.
+
+            WHEN 'ZFORNEC'.
+
+              IF so_lifnr[] IS INITIAL.
+                lv_msgv1 = |Fornecedor|.
+                CALL FUNCTION 'MESSAGE_STORE'
+                  EXPORTING
+                    arbgb                  = 'ZBMMM_RTC'
+                    msgty                  = 'E'
+                    txtnr                  = '016' "Obrigatório: &
+                    zeile                  = ' '
+                    msgv1                  = lv_msgv1
+                  EXCEPTIONS
+                    message_type_not_valid = 1
+                    not_active             = 2
+                    OTHERS                 = 3.
+                p_valid = ''.
+              ENDIF.
+
+            WHEN 'ZVISTEC'.
+
+              IF zbmmmt502-zdt_vistec IS INITIAL.
+                lv_msgv1 = |Data Visita Técnica|.
+                CALL FUNCTION 'MESSAGE_STORE'
+                  EXPORTING
+                    arbgb                  = 'ZBMMM_RTC'
+                    msgty                  = 'E'
+                    txtnr                  = '016' "Obrigatório: &
+                    zeile                  = ' '
+                    msgv1                  = lv_msgv1
+                  EXCEPTIONS
+                    message_type_not_valid = 1
+                    not_active             = 2
+                    OTHERS                 = 3.
+                p_valid = ''.
+              ENDIF.
+
+            WHEN 'ZPRECOANEX'.
+
+              IF lines( lt_anexos ) = 0.
+                lv_msgv1 = |Anexar tabela de|.
+                lv_msgv2 = |quantitativos e preços|.
+
+                CALL FUNCTION 'MESSAGE_STORE'
+                  EXPORTING
+                    arbgb                  = 'ZBMMM_RTC'
+                    msgty                  = 'E'
+                    txtnr                  = '016' "Obrigatório: &
+                    zeile                  = ' '
+                    msgv1                  = lv_msgv1
+                    msgv2                  = lv_msgv2
+                  EXCEPTIONS
+                    message_type_not_valid = 1
+                    not_active             = 2
+                    OTHERS                 = 3.
+                p_valid = ''.
+              ENDIF.
+
+            WHEN 'ZPESSOAL'.
+              IF zbmmmt502-zcomprec IS INITIAL.
+                lv_msgv1 = |A ArcelorMittal|.
+                lv_msgv2 = | compartilhará|.
+                lv_msgv3 = |com o fornecedor ou |.
+                lv_msgv4 = |receberá os dados|.
+
+                CALL FUNCTION 'MESSAGE_STORE'
+                  EXPORTING
+                    arbgb                  = 'ZBMMM_RTC'
+                    msgty                  = 'E'
+                    txtnr                  = '016' "Obrigatório: &
+                    zeile                  = ' '
+                    msgv1                  = lv_msgv1
+                    msgv2                  = lv_msgv2
+                    msgv3                  = lv_msgv3
+                    msgv4                  = lv_msgv4
+                  EXCEPTIONS
+                    message_type_not_valid = 1
+                    not_active             = 2
+                    OTHERS                 = 3.
+                p_valid = ''.
+              ENDIF.
+
+          ENDCASE.
+
+        ELSEIF <lv_value> = 'N'.
+
+          CASE ls_dfies-fieldname.
+            WHEN 'ZPRECOANEX'.
+
+              READ TABLE gt_text_editors ASSIGNING FIELD-SYMBOL(<lr_text_editor>) INDEX 3.
+              IF sy-subrc = 0.
+                CALL METHOD <lr_text_editor>->get_text_as_stream
+                  EXPORTING
+                    only_when_modified     = cl_gui_textedit=>false
+                  IMPORTING
+                    text                   = lt_text
+                  EXCEPTIONS
+                    error_dp               = 1
+                    error_cntl_call_method = 2
+                    OTHERS                 = 3.
+
+                IF lt_text IS INITIAL.
+                  lv_msgv1 = |Justificativa do |.
+                  lv_msgv2 = |não anexo da tabela |.
+                  lv_msgv3 = |de quantitativo e preço|.
+
+                  CALL FUNCTION 'MESSAGE_STORE'
+                    EXPORTING
+                      arbgb                  = 'ZBMMM_RTC'
+                      msgty                  = 'E'
+                      txtnr                  = '016' "Obrigatório: &
+                      zeile                  = ' '
+                      msgv1                  = lv_msgv1
+                      msgv2                  = lv_msgv2
+                      msgv3                  = lv_msgv3
+                    EXCEPTIONS
+                      message_type_not_valid = 1
+                      not_active             = 2
+                      OTHERS                 = 3.
+                  p_valid = ''.
+                ENDIF.
+
+              ENDIF.
+
+            WHEN 'ZFORNEC'.
+              FREE so_lifnr[].
+
+            WHEN 'ZCONTPED'.
+              CLEAR zbmmmt502-ebeln.
+
+            WHEN 'ZVISTEC'.
+              CLEAR: zbmmmt502-zdt_vistec, zbmmmt502-zrespvistec.
+
+          ENDCASE.
+
+        ELSEIF <lv_value> = 'R'.
+
+          CASE ls_dfies-fieldname.
+            WHEN 'ZCOMPREC'.
+
+              IF zbmmmt502-ztratam IS INITIAL.
+                lv_msgv1 = |A contratada realizará |.
+                lv_msgv2 = |o tratamento dos dados |.
+                lv_msgv3 = |pessoais compartilhados |.
+                lv_msgv4 = |sempre em nome da ArcelorMittal?|.
+
+                CALL FUNCTION 'MESSAGE_STORE'
+                  EXPORTING
+                    arbgb                  = 'ZBMMM_RTC'
+                    msgty                  = 'E'
+                    txtnr                  = '016' "Obrigatório: &
+                    zeile                  = ' '
+                    msgv1                  = lv_msgv1
+                    msgv2                  = lv_msgv2
+                    msgv3                  = lv_msgv3
+                    msgv4                  = lv_msgv4
+                  EXCEPTIONS
+                    message_type_not_valid = 1
+                    not_active             = 2
+                    OTHERS                 = 3.
+                p_valid = ''.
+              ENDIF.
+
+          ENDCASE.
+
+        ELSEIF <lv_value> = '2'.
+          " removido
+        ENDIF.
+
+      ENDIF.
+
+    ENDLOOP.
+
+    " obrigatoriedade de acordo com o motivo.
+    IF gs_header-zzmotivo_req EQ 'M02'.
+
+      zbmmmt502-zcontped = 'S'.
+
+      IF zbmmmt502-ebeln IS INITIAL.
+
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '016' "Obrigatório: &
+            zeile                  = ' '
+            msgv1                  = 'Doc. Referência'
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+
+      ENDIF.
+
+    ENDIF.
+
+*    IF ( zbmmmt502-zcatdem  = 'A' AND NOT line_exists( gt_item_serv[ cat_demanda = 'CAPEX' ] ) )
+*    OR ( zbmmmt502-zcatdem <> 'A' AND line_exists( gt_item_serv[ cat_demanda = 'CAPEX' ] ) ).
+*
+*      lv_msgv1 = |Categoria da demanda |.
+*      lv_msgv2 = |Inconsistente com o serviço |.
+*
+*      CALL FUNCTION 'MESSAGE_STORE'
+*        EXPORTING
+*          arbgb                  = 'ZBMMM_RTC'
+*          msgty                  = 'E'
+*          txtnr                  = '000'
+*          zeile                  = ' '
+*          msgv1                  = lv_msgv1
+*          msgv2                  = lv_msgv2
+*        EXCEPTIONS
+*          message_type_not_valid = 1
+*          not_active             = 2
+*          OTHERS                 = 3.
+*      p_valid = ''.
+*
+*    ENDIF.
+
+    DATA(lv_count) = CONV numc3( 0 ).
+    LOOP AT gt_text_editors ASSIGNING <lr_text_editor>.
+      ADD 1 TO lv_count.
+
+      FREE lt_text.
+      CALL METHOD <lr_text_editor>->get_text_as_stream
+        EXPORTING
+          only_when_modified     = cl_gui_textedit=>false
+        IMPORTING
+          text                   = lt_text
+        EXCEPTIONS
+          error_dp               = 1
+          error_cntl_call_method = 2
+          OTHERS                 = 3.
+
+      IF lt_text IS INITIAL.
+
+        CASE lv_count.
+          WHEN 1.
+            lv_msgv1 = |Escopo|.
+          WHEN 2.
+            lv_msgv1 = |Motivo da Contratação|.
+          WHEN 3.
+            CONTINUE.
+*              lv_msgv1 = |Justificativa do não anexo da tabela de quantitat|.
+          WHEN 4.
+            lv_msgv1 = |Descrição do projeto|.
+
+            READ TABLE ct_zbmmme1143 TRANSPORTING NO FIELDS WITH KEY matkl     = gs_item-matkl
+                                                                     zcriterio = 'DESCRICAO_PROJETO'
+                                                                      zobriga  = 'X'..
+            IF sy-subrc <> 0.
+              EXIT.
+            ENDIF.
+          WHEN OTHERS.
+            EXIT.
+        ENDCASE.
+
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '016' "Obrigatório: &
+            zeile                  = ' '
+            msgv1                  = lv_msgv1
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+
+      ENDIF.
+
+    ENDLOOP.
+
+    " Valida obrigatoriedade e existência do pep
+    READ TABLE ct_zbmmme1143 TRANSPORTING NO FIELDS WITH KEY matkl     = gs_item-matkl
+                                                             zcriterio = 'PS_PSP_PNR'
+                                                             zobriga = 'X'.
+    IF sy-subrc = 0.
+      PERFORM valida_pep CHANGING p_valid.
+    ENDIF.
+
+
+    PERFORM valida_ebeln CHANGING p_valid.
+
+    PERFORM valida_obg_fornecedores CHANGING p_valid.
+
+    PERFORM valida_fornecedores CHANGING p_valid.
+
+    PERFORM valida_zcapexap CHANGING p_valid.
+
+    IF lines( lt_anexos ) = 0 OR zbmmmt502-zetanex = 'N'.
+
+      MESSAGE i398(00) WITH 'Nenhum anexo encontrado!' 'Infelizmente não será possível' 'prosseguir com sua requisição' DISPLAY LIKE 'E'.
+      p_valid = ''.
+
+    ENDIF.
+
+    IF zbmmmt502-zcritici > CONV wertv8( '4.2' ).
+
+      DATA lv_ans.
+      CALL FUNCTION 'POPUP_TO_CONFIRM'
+        EXPORTING
+          titlebar              = 'Atenção!!! '
+          text_question         = |Esse serviço foi classificado como crítico. Deseja prosseguir?|
+          text_button_1         = 'Sim'
+          icon_button_1         = 'ICON_CHECKED'
+          text_button_2         = 'Não'
+          icon_button_2         = 'ICON_CANCEL'
+          display_cancel_button = ''
+          popup_type            = 'ICON_MESSAGE_ERROR'
+        IMPORTING
+          answer                = lv_ans.
+      IF lv_ans = 2.
+        p_valid = ''.
+      ENDIF.
+
+    ENDIF.
+
+    CALL FUNCTION 'MESSAGES_STOP'
+      EXCEPTIONS
+        a_message = 04
+        e_message = 03
+        i_message = 02
+        w_message = 01.
+    IF NOT sy-subrc IS INITIAL.
+      CALL FUNCTION 'MESSAGES_SHOW'
+        EXPORTING
+          i_use_grid         = 'X'
+          i_amodal_window    = ''
+        EXCEPTIONS
+          inconsistent_range = 1
+          no_messages        = 2
+          OTHERS             = 3.
+    ENDIF.
+
+  ENDFORM.
+
+  FORM valida_obg_fornecedores CHANGING p_valid.
+
+    DATA lra_zzmotivo_req TYPE RANGE OF zbme_motivo_requis.
+
+    get_parameter zbmmme861 zbmmme861 'GERA' '' 'FORN'.
+
+    lra_zzmotivo_req = VALUE #( FOR ls_861 IN ct_zbmmme861 ( sign = 'I' option = 'EQ' low = ls_861-zzmotivo_req ) ).
+
+    IF gs_header-zzmotivo_req IN lra_zzmotivo_req[]
+   AND so_lifnr[] IS INITIAL.
+
+      CALL FUNCTION 'MESSAGE_STORE'
+        EXPORTING
+          arbgb                  = 'ZBMMM_RTC'
+          msgty                  = 'E'
+          txtnr                  = '016' "Obrigatório: &
+          zeile                  = ' '
+          msgv1                  = |Fornecedor.|
+        EXCEPTIONS
+          message_type_not_valid = 1
+          not_active             = 2
+          OTHERS                 = 3.
+      p_valid = ''.
+
+    ENDIF.
+
+  ENDFORM.
+
+  FORM valida_fornecedores CHANGING p_valid.
+
+    DATA: lv_valor_rc    TYPE wertv8,
+          lt_extensionin TYPE TABLE OF bapiparex,
+          ls_extensionin TYPE bapiparex,
+          lt_return      TYPE TABLE OF bapiret2,
+          lt_pritem      TYPE TABLE OF bapimereqitemimp,
+          lt_pritemx     TYPE TABLE OF bapimereqitemx.
+
+    CHECK so_lifnr[] IS NOT INITIAL.
+
+    SELECT lifnr
+      FROM lfa1
+      INTO TABLE @DATA(lt_lifnr)
+      WHERE lifnr IN @so_lifnr.
+
+    LOOP AT so_lifnr INTO DATA(ls_lifnr).
+
+      IF NOT line_exists( lt_lifnr[ table_line = ls_lifnr-low ] ).
+
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZBMMM_RTC'
+            msgty                  = 'E'
+            txtnr                  = '024' "Fornecedor & não existe
+            zeile                  = ' '
+            msgv1                  = ls_lifnr-low
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+        p_valid = ''.
+
+      ENDIF.
+
+    ENDLOOP.
+
+    IF p_valid IS NOT INITIAL.
+
+      PERFORM calcula_total_item CHANGING lv_valor_rc.
+
+      " converte pra dolar.
+      READ TABLE gt_item_serv INTO DATA(ls_item_serv) INDEX 1.
+      PERFORM currency_conversion USING sy-datum
+                                        ls_item_serv-waers
+                               CHANGING lv_valor_rc.
+
+      IF lines( so_lifnr[] ) = 1
+     AND lv_valor_rc > CONV sbrtwr( 2000 )
+     AND gs_header-zzmotivo_req <> 'M03'
+     AND gs_header-zzmotivo_req <> 'M05'
+     AND gs_header-zzmotivo_req <> 'M07'.
+
+        DATA(lv_message) = |Foi informado apenas 1 fornecedor, e o valor é superior a USD$ 2k. Deseja alterar a modalidade da demanda para M03 – Exclusividade?|.
+
+        DATA lv_ans.
+        CALL FUNCTION 'POPUP_TO_CONFIRM'
+          EXPORTING
+            titlebar              = 'Atenção!!! '
+            text_question         = lv_message
+            text_button_1         = 'Sim'
+            icon_button_1         = 'ICON_CHECKED'
+            text_button_2         = 'Não'
+            icon_button_2         = 'ICON_CANCEL'
+            display_cancel_button = ''
+            popup_type            = 'ICON_MESSAGE_WARNING'
+          IMPORTING
+            answer                = lv_ans.
+
+        IF lv_ans = 1.
+          gs_header-zzmotivo_req = 'M03'.
+
+          DATA lv_erro.
+          PERFORM bapi_pr_change CHANGING lv_erro.
+
+          "Para a execução pro cara ter que salvar novamente
+          p_valid = ''.
+        ENDIF.
+
+      ENDIF.
+
+    ENDIF.
+
+  ENDFORM.
+
+  FORM valida_zcapexap CHANGING p_valid.
+
+    IF zbmmmt502-zcapexap = 'N' AND zbmmmt502-zjustuif IS INITIAL.
+
+      CALL FUNCTION 'MESSAGE_STORE'
+        EXPORTING
+          arbgb                  = 'ZBMMM_RTC'
+          msgty                  = 'E'
+          txtnr                  = '016' "Obrigatório: &
+          zeile                  = ' '
+          msgv1                  = |Justificar CAPEX não aprovado|
+        EXCEPTIONS
+          message_type_not_valid = 1
+          not_active             = 2
+          OTHERS                 = 3.
+      p_valid = ''.
+
+    ENDIF.
+
+  ENDFORM.
+
+  FORM bapi_pr_change CHANGING cv_erro.
+
+    DATA: lv_valor_rc     TYPE wertv8,
+          lt_extensionin  TYPE TABLE OF bapiparex,
+          ls_extensionin  TYPE bapiparex,
+          lt_return       TYPE TABLE OF bapiret2,
+          lt_pritem       TYPE TABLE OF bapimereqitemimp,
+          lt_pritemx      TYPE TABLE OF bapimereqitemx,
+          lt_prheadertext TYPE ty_headertext.
+
+    ls_extensionin-structure       = 'BAPI_TE_MEREQITEM'.
+    ls_extensionin-valuepart1      = '00010'.
+    ls_extensionin-valuepart1+197  = zbmmmt502-zgestec.   "(zzafnam)
+    ls_extensionin-valuepart1+215  = gs_header-zzmotivo_req.
+    ls_extensionin-valuepart1+218  = gs_header-zzrcmatric.
+    APPEND ls_extensionin TO lt_extensionin.
+
+    CLEAR: ls_extensionin.
+    ls_extensionin-structure     = 'BAPI_TE_MEREQITEMX'.
+    ls_extensionin-valuepart1    = '00010'.
+    ls_extensionin-valuepart1+19 = 'X'.
+    ls_extensionin-valuepart1+20 = 'X'.
+    ls_extensionin-valuepart1+21 = 'X'.
+    APPEND ls_extensionin TO lt_extensionin.
+
+    lt_pritem = VALUE #( ( preq_item = 10 ) ).
+    lt_pritemx = VALUE #( ( preq_item = 10 preq_itemx = 'X' ) ).
+
+    PERFORM get_header_text CHANGING lt_prheadertext.
+
+    CALL FUNCTION 'BAPI_PR_CHANGE'
+      EXPORTING
+        number       = gs_header-banfn
+      TABLES
+        return       = lt_return
+        extensionin  = lt_extensionin
+        pritem       = lt_pritem
+        pritemx      = lt_pritemx
+        prheadertext = lt_prheadertext.
+
+    IF line_exists( lt_return[ type = 'E' ] ).
+
+      ROLLBACK WORK.
+      CALL FUNCTION 'RSCRMBW_DISPLAY_BAPIRET2'
+        TABLES
+          it_return = lt_return.
+
+      cv_erro = 'X'.
+
+    ELSE.
+
+      cv_erro = ''.
+      COMMIT WORK AND WAIT.
+
+    ENDIF.
+
+  ENDFORM.
+
+  FORM valida_ebeln CHANGING p_valid.
+
+    CHECK zbmmmt502-ebeln IS NOT INITIAL.
+
+    SELECT SINGLE COUNT(*) FROM ekko WHERE ebeln = zbmmmt502-ebeln.
+    IF sy-subrc <> 0.
+
+      CALL FUNCTION 'MESSAGE_STORE'
+        EXPORTING
+          arbgb                  = 'ZBMMM_RTC'
+          msgty                  = 'E'
+          txtnr                  = '023' "Doc. referência & não existe
+          zeile                  = ' '
+          msgv1                  = zbmmmt502-ebeln
+        EXCEPTIONS
+          message_type_not_valid = 1
+          not_active             = 2
+          OTHERS                 = 3.
+      p_valid = ''.
+
+    ENDIF.
+
+  ENDFORM.
+
+  FORM valida_pep CHANGING p_valid.
+
+    IF zbmmmt502-ps_psp_pnr IS NOT INITIAL.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ABPSP_INPUT'
+        EXPORTING
+          input     = zbmmmt502-ps_psp_pnr
+        EXCEPTIONS
+          not_found = 1                " Not Found
+          OTHERS    = 2.
+      IF sy-subrc <> 0.
+        " a função acima já loga a mensagem de erro, n precisa da message store
+        p_valid = ''.
+
+      ENDIF.
+
+    ELSE.
+
+      CALL FUNCTION 'MESSAGE_STORE'
+        EXPORTING
+          arbgb                  = 'ZBMMM_RTC'
+          msgty                  = 'E'
+          txtnr                  = '016' "Obrigatório: &
+          zeile                  = ' '
+          msgv1                  = |Elemento PEP|
+        EXCEPTIONS
+          message_type_not_valid = 1
+          not_active             = 2
+          OTHERS                 = 3.
+      p_valid = ''.
+
+    ENDIF.
+
+  ENDFORM.
+
+  FORM calcula_prazo USING pu_valor_rc TYPE wertv8
+                           pu_sign
+                           pu_val_parametro TYPE zdertc_valor
+                           pu_prazo TYPE zdertc_prazo
+                  CHANGING pc_prazo TYPE zdertc_prazo.
+
+    DATA itab TYPE TABLE OF string.
+    DATA class TYPE string.
+    DATA oref TYPE REF TO object.
+
+    " Cria um programa temporário que só existe em tempo de execução para validar dinamicamente o prazo.
+    itab = VALUE #(
+      ( |program.|                     )
+      ( |class main definition.|       )
+      ( |  public section.|            )
+      ( |    methods meth exporting ev_prazo type ZDERTC_PRAZO.| )
+      ( |endclass.|                    )
+
+      ( |class main implementation.|   )
+      " Método verifica dinamicamente o prazo e retorna para o programa.
+      ( |  method meth.|               )
+      ( |     if conv wertv8( '{ pu_valor_rc }' ) { pu_sign } conv wertv8( '{ pu_val_parametro }' ).| )
+      ( |         ev_prazo = { pu_prazo }. | )
+      ( |     endif. | )
+      ( |  endmethod.|                 )
+      ( |endclass.|                    ) ).
+
+    GENERATE SUBROUTINE POOL itab NAME DATA(prog).
+
+    class = `\PROGRAM=` && prog && `\CLASS=MAIN`.
+
+    CREATE OBJECT oref TYPE (class).
+
+    CALL METHOD oref->('METH')
+      IMPORTING
+        ev_prazo = pc_prazo.
+
+  ENDFORM.
+
+  FORM calcula_total_item CHANGING pc_valor_total TYPE wertv8.
+
+    LOOP AT gs_item-t_item_serv ASSIGNING FIELD-SYMBOL(<ls_item_serv>).
+      pc_valor_total = pc_valor_total + <ls_item_serv>-vlr_tot.
+    ENDLOOP.
+
+  ENDFORM.
+
+  FORM cria_rc.
+
+    DATA: ls_prheader        TYPE bapimereqheader,
+          ls_prheaderx       TYPE bapimereqheaderx,
+          lv_testrun         TYPE bapiflag-bapiflag,
+          lv_rc_number       TYPE bapimereqheader-preq_no,
+          lt_return          TYPE TABLE OF bapiret2,
+          lt_pritem          TYPE TABLE OF bapimereqitemimp,
+          lt_pritemx         TYPE TABLE OF bapimereqitemx,
+          lt_praccount       TYPE TABLE OF bapimereqaccount,
+          lt_praccountx      TYPE TABLE OF bapimereqaccountx,
+          lt_servicelines    TYPE TABLE OF bapi_srv_service_line,
+          lt_servicelinesx   TYPE TABLE OF bapi_srv_service_linex,
+          lt_serviceaccount  TYPE TABLE OF bapi_srv_acc_data,
+          lt_serviceaccountx TYPE TABLE OF bapi_srv_acc_datax,
+          lv_serial          TYPE dzekkn,
+          ls_zbmmmt501       TYPE zbmmmt501,
+          lt_extensionin     TYPE TABLE OF bapiparex,
+          ls_extensionin     TYPE bapiparex,
+          lt_prheadertext    TYPE ty_headertext
+          .
+
+    DATA(lt_item) = gt_item.
+    DELETE lt_item WHERE knttp IS INITIAL.
+
+    " header
+    TRY.
+        ls_prheader = VALUE #( pr_type = 'YSAC'
+                               item_intvl = lt_item[ lines( lt_item ) ]-bnfpo ). " Pega o último item da requisição
+      CATCH cx_sy_itab_line_not_found.
+    ENDTRY.
+
+    " item
+    LOOP AT lt_item INTO DATA(ls_item).
+
+      DELETE ls_item-t_item_serv WHERE srvpos IS INITIAL.
+
+*      READ TABLE gt_item_serv INTO DATA(ls_item_serv) WITH KEY extrow = CONV extrow( ls_item-bnfpo ).
+      LOOP AT ls_item-t_item_serv INTO DATA(ls_item_serv_aux).
+        IF lines( ls_item_serv_aux-zmmt0032[] ) > 1.
+          DATA(lv_distrib) = '2'.
+          EXIT.
+        ELSE.
+          lv_distrib = ''.
+        ENDIF.
+      ENDLOOP.
+
+      APPEND VALUE #(
+        preq_item   = ls_item-bnfpo
+        ctrl_ind    = 'D'
+        pur_group   = gs_header-ekgrp
+        preq_name   = gs_header-afnam
+        short_text  = ls_item-txt01
+        plant       = gs_header-werks
+        matl_group  = ls_item-matkl
+        quantity    = 1
+        unit        = 'LE'
+        deliv_date  = ls_item-lfdat
+        preq_price  = 1
+        price_unit  = 1
+        item_cat    = 'D'
+        acctasscat  = ls_item-knttp
+        distrib     = lv_distrib
+        part_inv    = lv_distrib
+        gr_ind      = 'X'
+        ir_ind      = 'X'
+        purch_org   = gs_header-ekorg
+        period_ind_expiration_date = 'D'
+        currency    = ls_item_serv_aux-waers
+      ) TO lt_pritem[].
+
+      " account
+      lv_serial = 0.
+*      LOOP AT ls_item_serv-zmmt0032 INTO DATA(ls_class_contab).
+      LOOP AT ls_item-t_item_serv INTO DATA(ls_item_serv).
+        LOOP AT ls_item_serv-zmmt0032 INTO DATA(ls_class_contab).
+          ADD 1 TO lv_serial.
+
+          TRY.
+              DATA(lv_distr_perc) = CONV vproz( ls_class_contab-vproz ).
+            CATCH cx_root.
+              lv_distr_perc = 0.
+          ENDTRY.
+
+          DATA(lv_wbs_element) = ls_class_contab-ps_psp_pnr.
+
+          APPEND VALUE #(
+            preq_item   = ls_item-bnfpo
+            serial_no   = lv_serial
+            distr_perc  = lv_distr_perc
+            costcenter  = ls_class_contab-kostl
+            orderid     = ls_class_contab-aufnr
+            network     = ls_class_contab-nplnr
+            activity    = ls_class_contab-vornr
+            wbs_element = lv_wbs_element
+          ) TO lt_praccount[].
+
+          APPEND VALUE #(
+            doc_item       = ls_item-bnfpo
+            outline        = 1
+            srv_line       = ls_item_serv-extrow "ls_item-bnfpo
+            serial_no      = lv_serial
+            serial_no_item = lv_serial
+            quantity       = ls_item_serv-menge
+            percent        = lv_distr_perc "percentual informado caso tenha sido informado na tela de classificação contábil
+            net_value      = ls_item_serv-vlr_tot
+          ) TO lt_serviceaccount[].
+
+        ENDLOOP.
+
+        " servicelines
+        APPEND VALUE #(
+          doc_item     = ls_item-bnfpo "ls_item_serv-extrow
+          outline      = 1
+          srv_line     = ls_item_serv-extrow
+          service      = ls_item_serv-srvpos
+          quantity     = ls_item_serv-menge
+          uom          = 'VAL'
+          gross_price	 = ls_item_serv-preis
+          currency     = ls_item_serv-waers "'BRL'
+          price_unit   = 1
+          dist_ind_acc = lv_distrib
+          part_inv_ind = lv_distrib
+          net_price    = ls_item_serv-menge ) TO lt_servicelines[].
+      ENDLOOP.
+
+    ENDLOOP.
+
+    ls_extensionin-structure       = 'BAPI_TE_MEREQITEM'.
+    ls_extensionin-valuepart1      = '00010'.
+    ls_extensionin-valuepart1+215  = gs_header-zzmotivo_req.
+    ls_extensionin-valuepart1+218  = gs_header-zzrcmatric.
+    APPEND ls_extensionin TO lt_extensionin.
+
+    CLEAR: ls_extensionin.
+    ls_extensionin-structure     = 'BAPI_TE_MEREQITEMX'.
+    ls_extensionin-valuepart1    = '00010'.
+    ls_extensionin-valuepart1+20 = 'X'.
+    ls_extensionin-valuepart1+21 = 'X'.
+    APPEND ls_extensionin TO lt_extensionin.
+
+    PERFORM preenche_estruturas_x TABLES lt_pritem
+                                         lt_pritemx
+                                         lt_praccount
+                                         lt_praccountx
+                                         lt_servicelines
+                                         lt_servicelinesx
+                                         lt_serviceaccount
+                                         lt_serviceaccountx
+                                 CHANGING ls_prheader
+                                         ls_prheaderx.
+
+    PERFORM get_header_text CHANGING lt_prheadertext.
+
+*  lv_testrun = 'X'.
+    CALL FUNCTION 'BAPI_PR_CREATE'
+      EXPORTING
+        prheader        = ls_prheader
+        prheaderx       = ls_prheaderx
+        testrun         = lv_testrun
+      IMPORTING
+        number          = lv_rc_number
+      TABLES
+        return          = lt_return
+        pritem          = lt_pritem
+        pritemx         = lt_pritemx
+        praccount       = lt_praccount
+        praccountx      = lt_praccountx
+        servicelines    = lt_servicelines
+        servicelinesx   = lt_servicelinesx
+        serviceaccount  = lt_serviceaccount
+        serviceaccountx = lt_serviceaccountx
+        extensionin     = lt_extensionin
+        prheadertext    = lt_prheadertext.
+
+    IF line_exists( lt_return[ type = 'E' ] ).
+      ROLLBACK WORK.
+      CALL FUNCTION 'RSCRMBW_DISPLAY_BAPIRET2'
+        TABLES
+          it_return = lt_return.
+    ELSE.
+      COMMIT WORK AND WAIT.
+      MESSAGE s004(zbmmm_rtc) WITH lv_rc_number.
+      gs_header-banfn  = lv_rc_number.
+
+      LOOP AT lt_item INTO ls_item.
+        PERFORM grava_501 USING 10 '00' .
+      ENDLOOP.
+
+    ENDIF.
+
+    PERFORM grava_tab_dados_padrao.
+
+  ENDFORM.
+
+  FORM get_header_text CHANGING ct_prheadertext TYPE ty_headertext.
+
+    TYPES ty_char132(132) TYPE c.
+    DATA lt_text TYPE TABLE OF ty_char132.
+
+    CALL METHOD g_editor_htext->get_text_as_stream
+      EXPORTING
+        only_when_modified     = cl_gui_textedit=>false
+      IMPORTING
+        text                   = lt_text
+      EXCEPTIONS
+        error_dp               = 1
+        error_cntl_call_method = 2
+        OTHERS                 = 3.
+
+    ct_prheadertext = VALUE #( FOR lv_text IN lt_text ( preq_no   = ''
+                                                        preq_item = ''
+                                                        text_id   = 'B01'
+                                                        text_form = '*'
+                                                        text_line = lv_text ) ).
+
+  ENDFORM.
+
+  FORM salva_detalhamento_escopo.
+
+    TYPES ty_char132(132) TYPE c.
+
+    DATA ls_check_texts TYPE ty_check_texts.
+    DATA lt_check_texts TYPE tt_check_texts.
+    DATA lt_text TYPE TABLE OF ty_char132.
+    DATA lt_tlines TYPE TABLE OF tline.
+    DATA ls_header TYPE thead.
+
+    DATA(lv_valid) = 'X'.
+
+    DATA lv_answer.
+    PERFORM popup_confirm USING 'Confirma a conclusão do detalhamento do escopo?'
+                                'Confirmar'
+                       CHANGING lv_answer.
+
+    IF lv_answer = '1'.
+      gv_confirmou_conclusao = lv_answer.
+      PERFORM valida_obrigatoriedade_campos CHANGING lv_valid.
+    ELSE.
+      CLEAR gv_confirmou_conclusao.
+    ENDIF.
+
+    MOVE-CORRESPONDING zbmmmt502 TO gs_zbmmmt502.
+
+    CHECK lv_valid = 'X'.
+
+    CALL FUNCTION 'MESSAGES_INITIALIZE'.
+
+    PERFORM valida_gestor_tecnico USING gs_zbmmmt502-zgestec CHANGING lv_valid.
+    PERFORM valida_usuario USING gs_zbmmmt502-zgescon 'Gestor de contrato' CHANGING lv_valid.
+    PERFORM valida_usuario USING gs_zbmmmt502-zrespvistec 'Resp. Visita Técnica' CHANGING lv_valid.
+
+    CALL FUNCTION 'MESSAGES_STOP'
+      EXCEPTIONS
+        a_message = 04
+        e_message = 03
+        i_message = 02
+        w_message = 01.
+    IF NOT sy-subrc IS INITIAL.
+      CALL FUNCTION 'MESSAGES_SHOW'
+        EXPORTING
+          i_use_grid         = 'X'
+          i_amodal_window    = ''
+        EXCEPTIONS
+          inconsistent_range = 1
+          no_messages        = 2
+          OTHERS             = 3.
+    ENDIF.
+
+    CHECK lv_valid = 'X'.
+
+    gs_zbmmmt502-banfn = gs_header-banfn.
+    gs_zbmmmt502-ernam = sy-uname.
+    gs_zbmmmt502-erdat = sy-datum.
+    gs_zbmmmt502-uzeit = sy-uzeit.
+
+    MODIFY zbmmmt502 FROM gs_zbmmmt502.
+    IF sy-subrc = 0.
+      COMMIT WORK AND WAIT.
+    ENDIF.
+
+    DATA(lv_count) = CONV numc3( 0 ).
+    LOOP AT gt_text_editors ASSIGNING FIELD-SYMBOL(<lr_text_editor>).
+      ADD 1 TO lv_count.
+
+      CALL METHOD <lr_text_editor>->get_text_as_stream
+        EXPORTING
+          only_when_modified     = cl_gui_textedit=>false
+        IMPORTING
+          text                   = lt_text
+        EXCEPTIONS
+          error_dp               = 1
+          error_cntl_call_method = 2
+          OTHERS                 = 3.
+
+      lt_tlines = VALUE #( FOR lv_text IN lt_text ( tdformat = '*'
+                                                    tdline   = lv_text ) ).
+
+      DATA(lv_tdid) = CONV tdid( 'Y' && lv_count ).
+
+      ls_check_texts-tdid    = lv_tdid.
+      IF lt_text IS INITIAL.
+        ls_check_texts-hastext = ''.
+      ELSE.
+        ls_check_texts-hastext = 'X'.
+      ENDIF.
+      APPEND ls_check_texts TO lt_check_texts.
+
+      ls_header = VALUE #( tdobject = 'YRTC'
+                           tdname   = gs_zbmmmt502-banfn && gs_zbmmmt502-bnfpo
+                           tdid     = lv_tdid "'Y001'
+                           tdspras  = sy-langu ).
+
+      CALL FUNCTION 'SAVE_TEXT'
+        EXPORTING
+          header          = ls_header        " Text header of text to be saved
+          savemode_direct = 'X'
+        TABLES
+          lines           = lt_tlines        " Lines of text to be saved
+        EXCEPTIONS
+          id              = 1                " Text ID in text header invalid
+          language        = 2                " Language in text header invalid
+          name            = 3                " Text name in text header invalid
+          object          = 4                " Text object in text header invalid
+          OTHERS          = 5.
+
+      COMMIT WORK AND WAIT.
+
+    ENDLOOP.
+
+    " Salva fornecedores indicados.
+    DELETE FROM zbmmmt528 WHERE banfn = gs_header-banfn.
+    LOOP AT so_lifnr ASSIGNING FIELD-SYMBOL(<ls_lifnr>).
+
+      DATA(ls_528) = VALUE zbmmmt528( banfn = gs_header-banfn
+                                      bnfpo = gs_item-bnfpo
+                                      lifnr = <ls_lifnr>-low ).
+
+      INSERT zbmmmt528 FROM ls_528.
+      COMMIT WORK AND WAIT.
+
+    ENDLOOP.
+
+    IF sy-subrc <> 0.
+      DELETE FROM zbmmmt528 WHERE banfn = gs_header-banfn.
+    ENDIF.
+
+    CHECK lv_valid = 'X'.
+    DATA(lv_status) = CONV char02( '' ).
+*    PERFORM retorna_status TABLES lt_check_texts CHANGING lv_status.
+    IF gv_confirmou_conclusao IS NOT INITIAL.
+      lv_status = '02'.
+    ELSE.
+      lv_status = '01'.
+    ENDIF.
+
+    PERFORM grava_texto_escopo USING gs_zbmmmt502.
+
+    PERFORM grava_501 USING 10 lv_status .
+
+    " para incluir o ZGESTEC (ZZAFNAM) na requisição
+    DATA lv_error.
+    PERFORM bapi_pr_change CHANGING lv_error.
+
+    IF lv_error IS INITIAL.
+      MESSAGE |Escopo gravado com sucesso!| TYPE 'S'.
+    ENDIF.
+
+  ENDFORM.
+
+  FORM grava_tab_dados_padrao.
+    DATA ls_529 TYPE zbmmmt529.
+
+    MOVE-CORRESPONDING gs_header TO ls_529.
+    ls_529-uname = sy-uname.
+
+    MODIFY zbmmmt529 FROM ls_529.
+    COMMIT WORK AND WAIT.
+
+  ENDFORM.
+
+  FORM grava_501 USING i_bnfpo
+                       i_status.
+
+    DATA: lt_dd07v TYPE TABLE OF  dd07v.
+
+    SELECT SINGLE *
+      FROM zbmmmt501
+      INTO @DATA(ls_zbmmmt501)
+      WHERE banfn = @gs_header-banfn.
+*        AND bnfpo = @i_bnfpo.
+    IF sy-subrc = 0.
+
+      ls_zbmmmt501-banfn        = gs_header-banfn.
+      ls_zbmmmt501-bnfpo        = i_bnfpo.
+      ls_zbmmmt501-zstat_rtc    = i_status.
+      ls_zbmmmt501-werks        = gs_header-werks.
+      ls_zbmmmt501-aenam        = sy-uname.
+      ls_zbmmmt501-aedat        = sy-datum.
+      ls_zbmmmt501-aezeit       = sy-uzeit.
+      MODIFY zbmmmt501 FROM ls_zbmmmt501.
+
+    ELSE.
+
+      ls_zbmmmt501-banfn        = gs_header-banfn.
+      ls_zbmmmt501-bnfpo        = i_bnfpo.
+      ls_zbmmmt501-zstat_rtc    = i_status.
+      ls_zbmmmt501-werks        = gs_header-werks.
+      ls_zbmmmt501-ernam        = sy-uname.
+      ls_zbmmmt501-erdat        = sy-datum.
+      ls_zbmmmt501-erzeit       = sy-uzeit.
+      ls_zbmmmt501-aenam        = ''.
+      ls_zbmmmt501-aedat        = ''.
+      ls_zbmmmt501-aezeit       = ''.
+      INSERT zbmmmt501 FROM ls_zbmmmt501.
+
+    ENDIF.
+
+    CALL FUNCTION 'DD_DOMVALUES_GET'
+      EXPORTING
+        domname        = 'ZDO_STAT_RTC'
+        text           = 'X'
+        langu          = sy-langu
+      TABLES
+        dd07v_tab      = lt_dd07v
+      EXCEPTIONS
+        wrong_textflag = 1
+        OTHERS         = 2.
+
+    READ TABLE gt_item ASSIGNING FIELD-SYMBOL(<ls_item>) INDEX 1.
+    IF sy-subrc = 0.
+      <ls_item>-zstat_rtc = lt_dd07v[ domvalue_l = i_status ]-ddtext.
+    ENDIF.
+
+    COMMIT WORK AND WAIT.
+
+  ENDFORM.
+
+  FORM preenche_estruturas_x TABLES lt_pritem
+                                    lt_pritemx
+                                    lt_praccount
+                                    lt_praccountx
+                                    lt_servicelines
+                                    lt_servicelinesx
+                                    lt_serviceaccount
+                                    lt_serviceaccountx
+                           CHANGING ls_prheader
+                                    ls_prheaderx.
+
+    DATA: dfies_tab            TYPE TABLE OF dfies,
+          dfies_account        TYPE TABLE OF dfies,
+          dfies_servicelines   TYPE TABLE OF dfies,
+          dfies_serviceaccount TYPE TABLE OF dfies,
+          ls_pritemx           TYPE bapimereqitemx,
+          ls_praccountx        TYPE bapimereqaccountx,
+          ls_servicelinesx     TYPE bapi_srv_service_linex,
+          ls_serviceaccountx   TYPE bapi_srv_acc_datax.
+
+    " Flega os campos da estrutura headerx conforme o preenchimento da header.
+    DO.
+      ASSIGN COMPONENT sy-index OF STRUCTURE ls_prheader TO FIELD-SYMBOL(<fs_bapi>).
+      IF sy-subrc <> 0.
+        EXIT.
+      ENDIF.
+
+      ASSIGN COMPONENT sy-index OF STRUCTURE ls_prheaderx TO FIELD-SYMBOL(<fs_bapix>).
+      IF <fs_bapi> IS NOT INITIAL.
+        <fs_bapix> = 'X'.
+      ENDIF.
+    ENDDO.
+
+    " Preenche a tabela de itens
+    CALL FUNCTION 'DDIF_NAMETAB_GET'
+      EXPORTING
+        tabname   = 'BAPIMEREQITEMX'
+      TABLES
+        dfies_tab = dfies_tab
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+
+    CALL FUNCTION 'DDIF_NAMETAB_GET'
+      EXPORTING
+        tabname   = 'BAPIMEREQACCOUNTX'
+      TABLES
+        dfies_tab = dfies_account
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+
+    CALL FUNCTION 'DDIF_NAMETAB_GET'
+      EXPORTING
+        tabname   = 'BAPI_SRV_SERVICE_LINEX'
+      TABLES
+        dfies_tab = dfies_servicelines
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+
+    CALL FUNCTION 'DDIF_NAMETAB_GET'
+      EXPORTING
+        tabname   = 'BAPI_SRV_ACC_DATAX'
+      TABLES
+        dfies_tab = dfies_serviceaccount
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+
+    LOOP AT lt_pritem ASSIGNING FIELD-SYMBOL(<ls_pritem>).
+
+      LOOP AT dfies_tab ASSIGNING FIELD-SYMBOL(<dfies>) WHERE rollname = 'BAPIUPDATE'.
+
+        ASSIGN COMPONENT <dfies>-fieldname OF STRUCTURE ls_pritemx TO FIELD-SYMBOL(<fs_bapiitemx>).
+        CHECK <fs_bapiitemx> IS ASSIGNED.
+
+        ASSIGN COMPONENT <dfies>-fieldname OF STRUCTURE <ls_pritem> TO FIELD-SYMBOL(<fs_bapiitem>).
+
+        CHECK <fs_bapiitem> IS ASSIGNED.
+
+        IF <fs_bapiitem> IS INITIAL.
+          CLEAR <fs_bapiitemx>.
+        ELSE.
+          <fs_bapiitemx> = abap_true.
+        ENDIF.
+
+      ENDLOOP.
+
+      ASSIGN COMPONENT 'PREQ_ITEM' OF STRUCTURE <ls_pritem> TO FIELD-SYMBOL(<lv_preq_item>).
+      ls_pritemx-preq_item  = <lv_preq_item>.
+      ls_pritemx-preq_itemx = abap_true.
+      APPEND ls_pritemx TO lt_pritemx.
+      CLEAR ls_pritemx.
+
+    ENDLOOP.
+
+    LOOP AT lt_praccount ASSIGNING FIELD-SYMBOL(<ls_praccount>).
+
+      LOOP AT dfies_account ASSIGNING <dfies> WHERE rollname = 'BAPIUPDATE'.
+
+        ASSIGN COMPONENT <dfies>-fieldname OF STRUCTURE ls_praccountx TO FIELD-SYMBOL(<fs_praccountx>).
+        CHECK <fs_bapiitemx> IS ASSIGNED.
+
+        ASSIGN COMPONENT <dfies>-fieldname OF STRUCTURE <ls_praccount> TO FIELD-SYMBOL(<fs_praccount>).
+
+        CHECK <fs_praccount> IS ASSIGNED.
+
+        IF <fs_praccount> IS INITIAL. "OR ( <dfies>-fieldname = 'WBS_ELEMENT' AND <fs_praccount> = 0 ).
+          CLEAR <fs_praccountx>.
+        ELSE.
+          <fs_praccountx> = abap_true.
+        ENDIF.
+
+      ENDLOOP.
+
+      ASSIGN COMPONENT 'PREQ_ITEM' OF STRUCTURE <ls_praccount> TO  <lv_preq_item>.
+      ls_praccountx-preq_item  = <lv_preq_item>.
+      ls_praccountx-preq_itemx = 'X'.
+      ASSIGN COMPONENT 'SERIAL_NO' OF STRUCTURE <ls_praccount> TO  FIELD-SYMBOL(<lv_serial_no>).
+      ls_praccountx-serial_no  = <lv_serial_no>.
+      ls_praccountx-serial_nox = 'X'.
+
+      APPEND ls_praccountx TO lt_praccountx.
+      CLEAR ls_praccountx.
+    ENDLOOP.
+
+    LOOP AT lt_servicelines ASSIGNING FIELD-SYMBOL(<ls_servicelines>).
+
+      LOOP AT dfies_servicelines ASSIGNING <dfies> WHERE rollname = 'BAPIUPDATE'.
+        ASSIGN COMPONENT <dfies>-fieldname OF STRUCTURE ls_servicelinesx TO FIELD-SYMBOL(<fs_servicelinesx>).
+        CHECK <fs_bapiitemx> IS ASSIGNED.
+
+        ASSIGN COMPONENT <dfies>-fieldname OF STRUCTURE <ls_servicelines> TO FIELD-SYMBOL(<fs_servicelines>).
+
+        CHECK <fs_servicelines> IS ASSIGNED.
+
+        IF <fs_servicelines> IS INITIAL.
+          CLEAR <fs_servicelinesx>.
+        ELSE.
+          <fs_servicelinesx> = abap_true.
+        ENDIF.
+
+      ENDLOOP.
+
+      ASSIGN COMPONENT 'DOC_ITEM' OF STRUCTURE <ls_servicelines> TO FIELD-SYMBOL(<lv_doc_item>).
+      ls_servicelinesx-doc_item = <lv_doc_item>.
+      ASSIGN COMPONENT 'OUTLINE' OF STRUCTURE <ls_servicelines> TO FIELD-SYMBOL(<lv_outline>).
+      ls_servicelinesx-outline  = <lv_outline>.
+      ASSIGN COMPONENT 'SRV_LINE' OF STRUCTURE <ls_servicelines> TO FIELD-SYMBOL(<lv_srv_line>).
+      ls_servicelinesx-srv_line = <lv_srv_line>.
+
+      APPEND ls_servicelinesx TO lt_servicelinesx.
+      CLEAR ls_servicelinesx.
+    ENDLOOP.
+
+    LOOP AT lt_serviceaccount ASSIGNING FIELD-SYMBOL(<ls_serviceaccount>).
+
+      LOOP AT dfies_serviceaccount ASSIGNING <dfies> WHERE rollname = 'BAPIUPDATE'.
+        ASSIGN COMPONENT <dfies>-fieldname OF STRUCTURE ls_serviceaccountx TO FIELD-SYMBOL(<fs_serviceaccountx>).
+        CHECK <fs_bapiitemx> IS ASSIGNED.
+
+        ASSIGN COMPONENT <dfies>-fieldname OF STRUCTURE <ls_serviceaccount> TO FIELD-SYMBOL(<fs_serviceaccount>).
+
+        CHECK <fs_serviceaccount> IS ASSIGNED.
+
+        IF <fs_serviceaccount> IS INITIAL.
+          CLEAR <fs_serviceaccountx>.
+        ELSE.
+          <fs_serviceaccountx> = abap_true.
+        ENDIF.
+
+      ENDLOOP.
+
+      ASSIGN COMPONENT 'DOC_ITEM' OF STRUCTURE <ls_serviceaccount> TO <lv_doc_item>.
+      ls_serviceaccountx-doc_item = <lv_doc_item>.
+      ASSIGN COMPONENT 'OUTLINE' OF STRUCTURE <ls_serviceaccount> TO <lv_outline>.
+      ls_serviceaccountx-outline  = <lv_outline>.
+      ASSIGN COMPONENT 'SRV_LINE' OF STRUCTURE <ls_serviceaccount> TO <lv_srv_line>.
+      ls_serviceaccountx-srv_line = <lv_srv_line>.
+      ASSIGN COMPONENT 'SERIAL_NO' OF STRUCTURE <ls_serviceaccount> TO <lv_serial_no>.
+      ls_serviceaccountx-serial_no = <lv_serial_no>.
+
+      APPEND ls_serviceaccountx TO lt_serviceaccountx.
+      CLEAR ls_serviceaccountx.
+    ENDLOOP.
+
+  ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Module  VALIDA_WERKS  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+  MODULE valida_werks INPUT.
+
+    IF gs_header_aux IS NOT INITIAL.
+      gs_header = gs_header_aux.
+      CLEAR gs_header_aux.
+    ENDIF.
+
+    get_parameter zbmmme861 zbmmme861 'GERA' '' 'RTC'.
+    SORT ct_zbmmme861 BY zzmotivo_req.
+
+    CONSTANTS lc_auth_obj TYPE char20 VALUE 'ZBMMM_RTC'.
+
+    CHECK sy-ucomm <> 'NOVA'
+      AND sy-ucomm <> 'VISUALIZAR'
+      AND sy-ucomm <> 'CANCEL'.
+
+    IF gs_header-werks IS NOT INITIAL.
+*    AUTHORITY-CHECK OBJECT lc_auth_obj
+*             ID 'WERKS' FIELD gs_header-werks.
+*    IF sy-subrc NE 0.
+*      MESSAGE e001(zbmmm_rtc) WITH lc_auth_obj DISPLAY LIKE 'I'.
+*    ENDIF.
+    ENDIF.
+
+    PERFORM preenche_bukrs_e_name_werks.
+
+  ENDMODULE.
+
+  FORM preenche_bukrs_e_name_werks.
+
+    DATA lt_dynpread TYPE TABLE OF dynpread.
+
+    SELECT SINGLE t001k~bukrs,
+           t001w~name1
+      FROM t001k
+      JOIN t001w ON  t001w~bwkey = t001k~bwkey
+      INTO (@gs_header-bukrs, @gs_header-werks_name)
+      WHERE t001k~bwkey = @gs_header-werks.
+
+  ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Module  MOTIVO_RECUSA  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+  MODULE motivo_rc INPUT.
+
+    CHECK sy-ucomm <> 'NOVA'
+  AND sy-ucomm <> 'VISUALIZAR'
+  AND sy-ucomm <> 'CANCEL'.
+
+    get_parameter zbmmme857 zbmmme857 'GERA' '' ''.
+    READ TABLE ct_zbmmme857 INTO DATA(ls_zbmmme857) WITH KEY bsart = 'YSAC'
+                                                             motivo_req = gs_header-zzmotivo_req.
+    IF sy-subrc <> 0.
+      MESSAGE s026(zbmmm_rtc) DISPLAY LIKE 'E'. "Motivo rc não encontrado'
+    ELSE.
+
+      TRY.
+
+          gs_header-zzmotivo_req_desc = ct_zbmmme861[ zzmotivo_req = gs_header-zzmotivo_req ]-zzmotivo_req_desc.
+
+        CATCH cx_root.
+
+          CLEAR: gs_header-zzmotivo_req, gs_header-zzmotivo_req_desc.
+          MESSAGE s026(zbmmm_rtc) DISPLAY LIKE 'E'. "Motivo de rc não encontrado'
+
+      ENDTRY.
+
+    ENDIF.
+
+  ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  VALIDA_MATRICULA_RC  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+  MODULE valida_matricula_rc INPUT.
+
+    DATA lv_name TYPE zbme_rcmatric_desc.
+
+    IF gs_header-zzrcmatric IS NOT INITIAL.
+      CALL FUNCTION 'ZMMF_VALIDA_MATRICULA_RC'
+        EXPORTING
+          i_zzrcmatric               = gs_header-zzrcmatric
+        IMPORTING
+          o_name                     = lv_name
+        EXCEPTIONS
+          erro_atualizar_matricula   = 1
+          erro_matricula_solicitante = 2
+          erro_matricula_funcionario = 3
+          erro_parametro_zbmmme1071  = 4
+          OTHERS                     = 5.
+      IF sy-subrc = 0.
+        gs_header-matric_name = lv_name.
+      ELSE.
+        MESSAGE s398(00) WITH 'ID SAP/PN não encontrado' DISPLAY LIKE 'E'.
+      ENDIF.
+    ENDIF.
+
+  ENDMODULE.
+
+  MODULE valida_requisitante INPUT.
+
+    IF gs_header-afnam IS NOT INITIAL.
+
+      SELECT SINGLE bwkey,
+                    bukrs
+        INTO @DATA(ls_t001k)
+        FROM t001k
+        WHERE bwkey = @gs_header-werks.
+      IF sy-subrc = 0.
+
+        get_parameter zstmme011 zstmme011 ls_t001k-bukrs gs_header-werks ''.
+
+        READ TABLE ct_zstmme011 TRANSPORTING NO FIELDS WITH KEY zrecebedor = gs_header-afnam.
+        IF sy-subrc <> 0.
+          MESSAGE s085(zstmm) WITH gs_header-afnam DISPLAY LIKE 'E'.
+          CLEAR gs_header-afnam.
+        ENDIF.
+
+      ENDIF.
+    ENDIF.
+  ENDMODULE.
+
+
+*&---------------------------------------------------------------------*
+*&      Module  SH_MOT_REQ  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+  MODULE sh_mot_req INPUT.
+
+    DATA lt_return TYPE TABLE OF ddshretval .
+
+    FREE lt_return.
+    CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+      EXPORTING
+        ddic_structure  = 'ZBMMME861'            " Structure of VALUE_TAB (VALUE_ORG = 'S')
+        retfield        = 'ZZMOTIVO_REQ'                 " Name of return field in FIELD_TAB
+        dynpprog        = sy-cprog            " Current program
+        dynpnr          = sy-dynnr            " Screen number
+        dynprofield     = 'GS_HEADER-ZZMOTIVO_REQ'            " Name of screen field for value return
+        window_title    = 'Motivo RC'                " Title for the hit list
+        value_org       = 'S'              " Value return: C: cell by cell, S: structured
+      TABLES
+        value_tab       = ct_zbmmme861                 " Table of values: entries cell by cell
+        return_tab      = lt_return                  " Return the selected value
+      EXCEPTIONS
+        parameter_error = 1                " Incorrect parameter
+        no_values_found = 2                " No values found
+        OTHERS          = 3.
+    TRY.
+        gs_header-zzmotivo_req_desc = ct_zbmmme861[ zzmotivo_req = lt_return[ 1 ]-fieldval ]-zzmotivo_req_desc.
+      CATCH cx_root..
+    ENDTRY.
+
+  ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Module  SH_EKORG  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+  MODULE sh_ekorg INPUT.
+
+    TYPES: BEGIN OF ty_ekorg,
+             ekorg TYPE ekorg,
+             ekotx TYPE ekotx,
+           END OF ty_ekorg.
+
+    DATA lt_ekorg TYPE TABLE OF ty_ekorg.
+    SELECT ekorg ekotx FROM t024e INTO TABLE lt_ekorg.
+
+    FREE lt_return.
+
+    CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+      EXPORTING
+*       ddic_structure  = 'T024E'            " Structure of VALUE_TAB (VALUE_ORG = 'S')
+        retfield        = 'EKORG'                 " Name of return field in FIELD_TAB
+        dynpprog        = sy-cprog            " Current program
+        dynpnr          = sy-dynnr            " Screen number
+        dynprofield     = 'GS_HEADER-EKORG'            " Name of screen field for value return
+        window_title    = 'Org. Compras'                " Title for the hit list
+        value_org       = 'S'              " Value return: C: cell by cell, S: structured
+      TABLES
+        value_tab       = lt_ekorg                 " Table of values: entries cell by cell
+        return_tab      = lt_return                  " Return the selected value
+      EXCEPTIONS
+        parameter_error = 1                " Incorrect parameter
+        no_values_found = 2                " No values found
+        OTHERS          = 3.
+    TRY.
+        gs_header-ekorg = lt_ekorg[ ekorg = lt_return[ 1 ]-fieldval ]-ekorg.
+      CATCH cx_root..
+    ENDTRY.
+
+  ENDMODULE.
+
+  MODULE sh_ekgrp INPUT.
+
+    TYPES: BEGIN OF ty_ekgrp,
+             ekgrp TYPE ekgrp,
+             eknam TYPE eknam,
+           END OF ty_ekgrp.
+
+    DATA lt_ekgrp TYPE TABLE OF ty_ekgrp.
+    SELECT ekgrp eknam FROM t024 INTO TABLE lt_ekgrp.
+
+    FREE lt_return.
+
+    CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+      EXPORTING
+*       ddic_structure  = 'T024'            " Structure of VALUE_TAB (VALUE_ORG = 'S')
+        retfield        = 'EKGRP'                 " Name of return field in FIELD_TAB
+        dynpprog        = sy-cprog            " Current program
+        dynpnr          = sy-dynnr            " Screen number
+        dynprofield     = 'GS_HEADER-EKGRP'            " Name of screen field for value return
+        window_title    = 'Grp. Compradores'                " Title for the hit list
+        value_org       = 'S'              " Value return: C: cell by cell, S: structured
+      TABLES
+        value_tab       = lt_ekgrp                 " Table of values: entries cell by cell
+        return_tab      = lt_return                  " Return the selected value
+      EXCEPTIONS
+        parameter_error = 1                " Incorrect parameter
+        no_values_found = 2                " No values found
+        OTHERS          = 3.
+    TRY.
+        gs_header-ekgrp = lt_ekgrp[ ekgrp = lt_return[ 1 ]-fieldval ]-ekgrp.
+      CATCH cx_root..
+    ENDTRY.
+
+  ENDMODULE.
+
+  FORM anexa_arquivo.
+    DATA: v_objkey TYPE borident.
+
+    DATA: t_message TYPE symsg.
+
+    v_objkey-objkey  = gs_header-banfn.
+    v_objkey-objtype = 'BUS2105'.
+
+    MESSAGE i398(00) WITH 'Anexe os arquivos' ' necessários para a' ' solicitação do serviço!'.
+
+    CALL FUNCTION 'GOS_EXECUTE_SERVICE'
+      EXPORTING
+        ip_service       = 'PCATTA_CREA'
+        is_object        = v_objkey
+        ip_no_commit     = ' '
+        ip_popup         = 'X'
+        ip_rwmod         = 'E'
+      IMPORTING
+        ep_message       = t_message
+      EXCEPTIONS
+        execution_failed = 1
+        OTHERS           = 2.
+
+    IF sy-subrc = 0.
+
+      CALL FUNCTION 'GOS_EXECUTE_SERVICE'
+        EXPORTING
+          ip_service       = 'VIEW_ATTA'
+          is_object        = v_objkey
+          ip_no_commit     = ' '
+          ip_popup         = 'X'
+          ip_rwmod         = 'E'
+        IMPORTING
+          ep_message       = t_message
+        EXCEPTIONS
+          execution_failed = 1
+          OTHERS           = 2.
+
+    ENDIF.
+
+    IF sy-subrc <> 0.
+      MESSAGE i398(00) WITH |Não há arquivos anexados ainda.| DISPLAY LIKE 'I'.
+    ENDIF.
+
+  ENDFORM.
+
+  FORM popup_info.
+
+    DATA lv_title TYPE char80.
+    DATA lt_tline TYPE TABLE OF tline.
+    DATA lv_big.
+    DATA lv_text_name TYPE thead-tdname.
+    DATA ttb_button TYPE ttb_button.
+
+    CASE sy-ucomm.
+      WHEN 'ESC_INFO'.
+        lv_title = |Escopo|.
+        lv_text_name = 'ZESCOPO_INFO'.
+
+      WHEN 'MOTIVO_CON_INFO'.
+        lv_title = |Motivo da contratação|.
+        lv_text_name = 'ZMOTIVO_CON_INFO'.
+
+      WHEN 'TRAT_DADOS_PESSOAIS'.
+        lv_title = |O objeto deste contrato envolverá o tratamento de dados pessoais? |.
+        lv_text_name = 'ZTRAT_DADOS_PESSOAIS'.
+
+      WHEN 'COMPREC_DADOS_PESSOA'.
+        lv_title = |A ArcelorMittal compartilhará com o fornecedor ou receberá os dados pessoais dele? |.
+        lv_text_name = 'ZCOMPREC_DADOS_PESSOA'.
+
+      WHEN 'TRAT_NOME_ARCELOR'.
+        lv_title = |A contratada realizará o tratamento dos dados pessoais compartilhados sempre em nome da ArcelorMittal? |.
+        lv_text_name = 'ZTRAT_NOME_ARCELOR'.
+
+      WHEN 'MOTFIN_TRAT_EXCLUSIV'.
+        lv_title = |A contratada realizará o tratamento dos dados pessoais compartilhados sempre em nome da  ArcelorMittal? |.
+        lv_text_name = 'ZMOTFIN_TRAT_EXCLUSIV'.
+
+      WHEN 'COMPLIANCE_CONCES_DO'.
+        lv_title = |Há a aprovação do Compliance para a concessão de patrocínio/doação? |.
+        lv_text_name = 'ZCOMPLIANCE_CONCES_DO'.
+
+      WHEN 'PRAZO_MESES'.
+        lv_title = |Prazo meses|.
+        lv_text_name = 'ZPRAZO_MESES'.
+
+      WHEN OTHERS.
+    ENDCASE.
+
+    CALL FUNCTION 'READ_TEXT'
+      EXPORTING
+        id                      = 'ST'
+        language                = sy-langu
+        name                    = lv_text_name
+        object                  = 'TEXT'
+      TABLES
+        lines                   = lt_tline
+      EXCEPTIONS
+        id                      = 1
+        language                = 2
+        name                    = 3
+        not_found               = 4
+        object                  = 5
+        reference_check         = 6
+        wrong_access_to_archive = 7
+        OTHERS                  = 8.
+
+    DATA(ls_help_info) = VALUE help_info(
+      call      = 'D'
+      title     = lv_title
+      message   = lv_title
+      object    = 'N'
+      program   = sy-cprog
+      dynpro    = sy-dynnr
+      spras     = sy-langu
+      messageid = 'SY'
+      messagenr = 432
+      tcode     = sy-tcode
+      dynpprog  = sy-cprog
+      msgv1     = lv_title
+      headertext = lv_title
+
+     ).
+
+    CALL FUNCTION 'HELP_DOCULINES_SHOW'
+      EXPORTING
+        help_infos = ls_help_info
+      TABLES
+        excludefun = ttb_button
+        helplines  = lt_tline.
+
+  ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Module  CALCULA_IMPACTO  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+  MODULE calcula_impacto INPUT.
+
+    DATA(lv_zimpqua) = CONV wertv8( '0.5' ) .
+    DATA(lv_zimpest) = CONV wertv8( '0.4' ).
+    DATA(lv_zimpseg) = CONV wertv8( '0.3' ).
+    DATA(lv_zimpamb) = CONV wertv8( '0.3' ).
+    DATA(lv_zimpimg) = CONV wertv8( '0.1' ).
+
+    lv_zimpqua  = zbmmmt502-zimpqua * lv_zimpqua.
+    lv_zimpest  = zbmmmt502-zimpest * lv_zimpest.
+    lv_zimpseg  = zbmmmt502-zimpseg * lv_zimpseg.
+    lv_zimpamb  = zbmmmt502-zimpamb * lv_zimpamb.
+    lv_zimpimg  = zbmmmt502-zimpimg * lv_zimpimg.
+
+    zbmmmt502-zcritici = lv_zimpqua
+                       + lv_zimpest
+                       + lv_zimpseg
+                       + lv_zimpamb
+                       + lv_zimpimg.
+
+  ENDMODULE..
+
+  FORM valida_obrigatoriedade_campos CHANGING p_valid.
+
+    LOOP AT SCREEN.
+
+      IF screen-name IN gra_fields_obrig[]
+    AND gra_fields_obrig[] IS NOT INITIAL.
+
+        ASSIGN COMPONENT screen-name+13 OF STRUCTURE gs_zbmmmt502 TO FIELD-SYMBOL(<lv_obg_field>).
+        IF sy-subrc = 0.
+          IF <lv_obg_field> IS INITIAL.
+            MESSAGE |Preencher campos obrigatórios.| TYPE 'S' DISPLAY LIKE 'E'.
+            p_valid = ''.
+          ENDIF.
+        ENDIF.
+
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDFORM.
+
+  FORM valida_usuario USING p_user p_name CHANGING p_valid.
+
+    CHECK p_user IS NOT INITIAL.
+
+    SELECT COUNT(*) FROM usr01 WHERE bname = p_user.
+    IF sy-subrc <> 0.
+
+      CALL FUNCTION 'MESSAGE_STORE'
+        EXPORTING
+          arbgb                  = '00'
+          msgty                  = 'E'
+          txtnr                  = '398' "Campo &1 obrigatório!
+          zeile                  = ' '
+          msgv1                  = p_name
+          msgv2                  = p_user
+          msgv3                  = |Não encontrado|
+        EXCEPTIONS
+          message_type_not_valid = 1
+          not_active             = 2
+          OTHERS                 = 3.
+
+      CLEAR p_valid.
+    ENDIF.
+
+  ENDFORM.
+
+  FORM valida_gestor_tecnico USING p_user TYPE username CHANGING p_valid.
+
+    DATA lv_error_message TYPE string.
+
+    get_parameter zbmmme417 zbmmme417 gs_header-bukrs  '' 'MM'.
+
+    READ TABLE ct_zbmmme417 TRANSPORTING NO FIELDS WITH KEY fieldname     = 'ATIVO'
+                                                            usage_process = 'ZGEMMF043'
+                                                            field_content = abap_true.
+    IF  sy-subrc = 0 .
+
+      CALL FUNCTION 'ZGEMMF044'
+        EXPORTING
+          iv_gestor_tecnico = p_user
+        IMPORTING
+          ev_error_message  = lv_error_message.
+
+      IF lv_error_message IS NOT INITIAL.
+
+        DATA(lv_message1) = CONV char50( lv_error_message ).
+
+        IF strlen( lv_error_message ) GT 50.
+          DATA(lv_message2) = lv_error_message+50.
+        ENDIF.
+
+        CALL FUNCTION 'MESSAGE_STORE'
+          EXPORTING
+            arbgb                  = 'ZMM'
+            msgty                  = 'E'
+            txtnr                  = '226'
+            zeile                  = ' '
+            msgv1                  = lv_message1
+            msgv2                  = lv_message2
+          EXCEPTIONS
+            message_type_not_valid = 1
+            not_active             = 2
+            OTHERS                 = 3.
+
+        CLEAR p_valid.
+
+      ENDIF.
+
+    ENDIF.
+
+  ENDFORM.
+
+  FORM download_modelo_excel.
+
+    DATA: l_filelength    TYPE i.
+    DATA: l_orln          LIKE drao-orln.
+    DATA: l_data_tab      LIKE rcgrepfile OCCURS 10 WITH HEADER LINE.
+    DATA: l_filename      LIKE rlgrap-filename.
+    DATA: l_auth_filename LIKE authb-filename.
+    DATA: l_return        TYPE c.
+    DATA: l_lines         TYPE i.
+
+    CALL FUNCTION 'F4_FILENAME'
+      EXPORTING
+        program_name  = syst-cprog       " Module pool program name for screen field
+        dynpro_number = syst-dynnr       " Dynpro number where F4 help is needed
+      IMPORTING
+        file_name     = l_filename. "lv_filename.                " Path name selected by user with help of Filemngr
+
+* read data from application server
+    DATA(lv_cprog) = sy-cprog.
+    sy-cprog = 'RC1TCG3Y'.
+    DATA(lv_full_name) = '/usr/sap/trans/RTC_TEMPLATE.xlsx'.
+    CALL FUNCTION 'C13Z_RAWDATA_READ'
+      EXPORTING
+        i_file           = CONV rcgfiletr-ftappl( lv_full_name )
+      IMPORTING
+        e_file_size      = l_orln
+        e_lines          = l_lines
+      TABLES
+        e_rcgrepfile_tab = l_data_tab
+      EXCEPTIONS
+        no_permission    = 1
+        open_failed      = 2
+        read_error       = 3
+        OTHERS           = 4.
+
+    READ TABLE l_data_tab INDEX 1.
+    IF sy-subrc IS INITIAL.
+
+      l_filelength = l_orln.
+      l_filename = l_filename && '.xlsx'.
+      CALL FUNCTION 'C13Z_DOWNLOAD'
+        EXPORTING
+          bin_filesize        = l_filelength
+*         CODEPAGE            = ' '
+          filename            = l_filename
+          filetype            = 'BIN'
+        IMPORTING
+          filelength          = l_filelength
+        TABLES
+          data_tab            = l_data_tab
+        EXCEPTIONS
+          file_open_error     = 1
+          file_write_error    = 2
+          invalid_filesize    = 3
+          invalid_table_width = 4
+          invalid_type        = 5
+          no_batch            = 6
+          unknown_error       = 7
+          OTHERS              = 8.
+
+    ENDIF.                            " sy-subrc is initial
+
+    sy-cprog = lv_cprog.
+
+  ENDFORM.
+
+  FORM upload_excel.
+
+    DATA: i_file_data TYPE TABLE OF ty_file.
+    DATA: lt_file_data TYPE TABLE OF ty_file.
+
+    DATA: wa_file_data LIKE LINE OF i_file_data.
+
+    DATA: lv_filename TYPE rlgrap-filename,
+          gt_file     TYPE TABLE OF zbmmmt532,
+          ls_file     LIKE LINE OF gt_file.
+
+    DATA lv_bin_data TYPE xstring.
+
+    CALL FUNCTION 'F4_FILENAME'
+      EXPORTING
+        program_name  = syst-cprog       " Module pool program name for screen field
+        dynpro_number = syst-dynnr       " Dynpro number where F4 help is needed
+      IMPORTING
+        file_name     = lv_filename.                " Path name selected by user with help of Filemngr
+
+
+    IF NOT lcl_file_handler=>get_excel_local( EXPORTING iv_file    = lv_filename
+                                              CHANGING cv_bin_data = lv_bin_data ).
+      MESSAGE TEXT-142 TYPE 'S' DISPLAY LIKE 'E'.
+      RETURN.
+    ENDIF.
+
+    IF NOT lcl_file_handler=>fill_tables( EXPORTING iv_file     = lv_filename
+                                                    iv_bin_data = lv_bin_data
+                                           CHANGING ct_table = i_file_data
+                                                    ct_table_cline = lt_file_data ).
+      MESSAGE TEXT-142 TYPE 'S' DISPLAY LIKE 'E'.
+      RETURN.
+    ENDIF.
+
+    PERFORM preenche_com_excel TABLES i_file_data[].
+
+*    "Função para converter os dados do excel em internal table
+*    DATA: i_raw TYPE truxs_t_text_data.
+*
+*    CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+*      EXPORTING
+*        i_field_seperator    = 'X'
+*        i_line_header        = space
+*        i_tab_raw_data       = i_raw
+*        i_filename           = lv_filename
+*      TABLES
+*        i_tab_converted_data = i_file_data[]
+*      EXCEPTIONS
+*        conversion_failed    = 1
+*        OTHERS               = 2.
+*
+*    DELETE i_file_data[] INDEX 1.
+*
+*    PERFORM preenche_com_excel TABLES i_file_data[].
+
+  ENDFORM.
+
+  FORM preenche_com_excel  TABLES pt_file TYPE ty_file_t.
+
+    DATA lv_count TYPE sy-tabix.
+
+    DATA dfies TYPE TABLE OF dfies.
+
+    CALL FUNCTION 'DDIF_NAMETAB_GET'
+      EXPORTING
+        tabname   = 'ZGEMME459'
+      TABLES
+        dfies_tab = dfies
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+
+    CLEAR so_lifnr[].
+    LOOP AT pt_file INTO DATA(ls_file).
+
+      READ TABLE dfies INTO DATA(ls_dfies) INDEX sy-tabix.
+
+      IF sy-subrc = 0 AND ls_dfies-fieldname(5) <> 'TEXTO'.
+        " Preenche campos normais
+        ASSIGN COMPONENT ls_dfies-fieldname OF STRUCTURE zbmmmt502 TO FIELD-SYMBOL(<lv_field>).
+        IF sy-subrc = 0.
+
+          " trata pra quando for data.
+          IF ls_file-col2 CS '-'.
+            REPLACE ALL OCCURRENCES OF '-' IN ls_file-col2 WITH space.
+          ENDIF.
+
+          IF  ls_dfies-fieldname = 'ZDOLREF'.
+            REPLACE ',' IN ls_file-col2 WITH '.'.
+          ENDIF.
+
+          TRY.
+              <lv_field> = ls_file-col2.
+            CATCH cx_root.
+              MESSAGE |Formato ou preenchimento do arquivo incorretos! Baixar modelo em "Download Layout".| TYPE 'I' DISPLAY LIKE 'E'.
+              CLEAR zbmmmt502.
+              EXIT.
+          ENDTRY.
+        ENDIF.
+
+      ELSE.
+        lv_count = lv_count + 1.
+
+        IF lv_count > 4.
+          " Preenche fornecedores
+          IF ls_file-col2 <> space.
+            APPEND VALUE #( sign = 'I' option = 'EQ' low = CONV #( ls_file-col2 ) ) TO so_lifnr[].
+          ENDIF.
+
+        ELSE.
+
+          PERFORM preenche_texto USING lv_count ls_file-col2.
+
+        ENDIF.
+
+      ENDIF.
+
+    ENDLOOP.
+
+    PERFORM enter.
+  ENDFORM.
+
+  FORM preenche_texto USING pu_index
+                            pu_valor TYPE string.
+
+    DATA: lt_textlines    TYPE TABLE OF tdline,
+          lt_string_table TYPE string_table.
+
+    READ TABLE gt_text_editors ASSIGNING FIELD-SYMBOL(<ls_text_editor>) INDEX pu_index.
+    IF sy-subrc = 0.
+
+      CALL FUNCTION 'RKD_WORD_WRAP'
+        EXPORTING
+          textline            = CONV char30k( pu_valor )
+          delimiter           = ' '
+          outputlen           = 200
+        TABLES
+          out_lines           = lt_string_table
+        EXCEPTIONS
+          outputlen_too_large = 1
+          OTHERS              = 2.
+
+      LOOP AT lt_string_table INTO DATA(lv_string).
+
+        IF strlen( lv_string ) > 132.
+
+          APPEND lv_string(132) TO lt_textlines.
+          APPEND lv_string+132 TO lt_textlines.
+
+        ELSE.
+
+          APPEND lv_string TO lt_textlines.
+
+        ENDIF.
+
+      ENDLOOP.
+
+      CALL METHOD <ls_text_editor>->set_text_as_r3table
+        EXPORTING
+          table  = lt_textlines
+        EXCEPTIONS
+          OTHERS = 1.
+
+    ENDIF.
+
+  ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Module  SH_GESCON  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+  MODULE sh_gescon INPUT.
+    PERFORM get_user CHANGING zbmmmt502-zgescon.
+  ENDMODULE.
+
+  MODULE sh_gestec INPUT.
+    PERFORM get_user CHANGING zbmmmt502-zgestec.
+  ENDMODULE.
+
+  MODULE sh_respvistec INPUT.
+    PERFORM get_user CHANGING zbmmmt502-zrespvistec.
+  ENDMODULE.
+
+  FORM get_user CHANGING p_user TYPE xubname.
+
+    SELECT usr21~bname,
+           adrp~name_text
+      INTO TABLE @DATA(lt_user)
+      FROM usr21 JOIN adrp ON usr21~persnumber = adrp~persnumber
+                          AND adrp~nation      = ''.
+
+    FREE lt_return.
+
+    CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+      EXPORTING
+        retfield        = 'BNAME'
+        dynpprog        = sy-cprog
+        dynpnr          = sy-dynnr
+*       dynprofield     = 'GS_HEADER-EKORG'
+        window_title    = 'Usuário'
+        value_org       = 'S'
+      TABLES
+        value_tab       = lt_user
+        return_tab      = lt_return
+      EXCEPTIONS
+        parameter_error = 1
+        no_values_found = 2
+        OTHERS          = 3.
+    TRY.
+        p_user = lt_user[ bname = lt_return[ 1 ]-fieldval ]-bname.
+      CATCH cx_root..
+    ENDTRY.
+  ENDFORM.

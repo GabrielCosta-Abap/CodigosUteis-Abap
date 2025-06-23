@@ -1,0 +1,104 @@
+*&---------------------------------------------------------------------*
+*&  Include           SAPMZBMMMO052_TOP
+*&---------------------------------------------------------------------*
+TABLES zbmmmt502.
+
+INCLUDE zstgei006.
+
+TYPE-POOLS : vrm.
+
+TYPES: BEGIN OF ty_check_texts,
+         tdid    TYPE tdid,
+         hastext TYPE char1,
+       END OF ty_check_texts,
+
+       BEGIN OF ty_file,
+         col1 TYPE string,
+         col2 TYPE string,
+       END OF ty_file.
+
+TYPES tt_check_texts TYPE TABLE OF ty_check_texts.
+TYPES tt_zbmmmt532 TYPE TABLE OF zbmmmt532.
+TYPES ty_file_t TYPE TABLE OF ty_file.
+TYPES ty_headertext TYPE TABLE OF bapimereqheadtext.
+
+
+DATA: ssn TYPE sy-dynnr.
+
+"GRID RC
+DATA: g_container        TYPE scrfname VALUE 'CC_GRID',
+      g_grid             TYPE REF TO cl_gui_alv_grid,
+      g_custom_container TYPE REF TO cl_gui_custom_container,
+      g_layout           TYPE lvc_s_layo,
+      gs_toolbar         TYPE stb_button,
+      g_fcat             TYPE lvc_t_fcat,
+      g_type             TYPE char6 VALUE 'ITEM',
+      g_switch           TYPE char1 VALUE 'X'.
+
+"GRID Serviço
+DATA: g_container_serv        TYPE scrfname VALUE 'CC_GRID_SERV',
+      g_grid_serv             TYPE REF TO cl_gui_alv_grid,
+      g_custom_container_serv TYPE REF TO cl_gui_custom_container,
+      g_layout_serv           TYPE lvc_s_layo,
+      gs_toolbar_serv         TYPE stb_button,
+      g_fcat_serv             TYPE lvc_t_fcat.
+
+"GRID Class. Contábil
+DATA: g_container_0200        TYPE scrfname VALUE 'CC_GRID_0200',
+      g_grid_0200             TYPE REF TO cl_gui_alv_grid,
+      g_custom_container_0200 TYPE REF TO cl_gui_custom_container,
+      g_layout_0200           TYPE lvc_s_layo,
+      gs_toolbar_0200         TYPE stb_button,
+      g_fcat_0200             TYPE lvc_t_fcat.
+
+" Text areas det de escopo
+DATA: g_editor_htext    TYPE REF TO cl_gui_textedit,
+      g_container_htext TYPE REF TO cl_gui_custom_container.
+
+DATA: g_editor_escopo    TYPE REF TO cl_gui_textedit,
+      g_container_escopo TYPE REF TO cl_gui_custom_container.
+
+DATA: g_editor_motivo_contratacao    TYPE REF TO cl_gui_textedit,
+      g_container_motivo_contratacao TYPE REF TO cl_gui_custom_container.
+
+DATA: g_editor_justificativa    TYPE REF TO cl_gui_textedit,
+      g_container_justificativa TYPE REF TO cl_gui_custom_container.
+
+DATA: g_editor_descricao_projeto    TYPE REF TO cl_gui_textedit,
+      g_container_descricao_projeto TYPE REF TO cl_gui_custom_container.
+
+DATA gs_header     TYPE zbmmme1132.
+DATA gs_header_aux TYPE zbmmme1132.
+
+DATA: gt_item TYPE zbmmmct1123,
+      gs_item LIKE LINE OF gt_item.
+
+DATA: BEGIN OF gs_item_serv.
+        INCLUDE TYPE zbmmme1124.
+        DATA: celltab TYPE lvc_t_styl.
+DATA: END OF gs_item_serv.
+
+
+DATA: gt_item_serv LIKE TABLE OF gs_item_serv. "TYPE zbmmmct1124,
+*      gs_item_serv LIKE LINE OF gt_item_serv.
+
+DATA: BEGIN OF gs_class_contab.
+        INCLUDE TYPE zbmmme1162.
+        DATA: celltab TYPE lvc_t_styl.
+DATA: END OF gs_class_contab.
+
+DATA gt_class_contab LIKE TABLE OF gs_class_contab.
+
+DATA gs_zmmt0032 TYPE LINE OF zmmt0032_t.
+DATA gs_zbmmmt502 TYPE zbmmmt502.
+
+DATA gt_text_editors TYPE TABLE OF REF TO cl_gui_textedit.
+
+DATA: ok_code             LIKE sy-ucomm.
+
+DATA: cat_1, cat_2, cat_3, cat_4.
+
+DATA: gv_item_selected .
+DATA: item_selected TYPE bnfpo VALUE '00010'.
+DATA gv_confirmou_conclusao.
+DATA gra_fields_obrig TYPE RANGE OF fieldname.
