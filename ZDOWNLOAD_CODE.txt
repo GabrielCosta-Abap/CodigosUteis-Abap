@@ -1,0 +1,123 @@
+REPORT zexport_abap_program.
+
+PARAMETERS:
+  p_prog TYPE progname OBLIGATORY,
+  p_path TYPE rlgrap-filename OBLIGATORY. " Caminho final com barra: ex. C:\Temp\
+
+DATA: lt_includes TYPE STANDARD TABLE OF trdir WITH EMPTY KEY,
+      lt_temp     TYPE STANDARD TABLE OF string WITH EMPTY KEY,
+      lv_line     TYPE string,
+      lv_filename TYPE string.
+
+START-OF-SELECTION.
+
+  " Obter includes do programa
+  CALL FUNCTION 'RS_GET_ALL_INCLUDES'
+    EXPORTING
+      program          = p_prog
+    TABLES
+      includetab       = lt_includes
+    EXCEPTIONS
+      no_program_found = 1
+      OTHERS           = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'Programa não encontrado ou erro ao buscar includes' TYPE 'E'.
+  ENDIF.
+
+  " Adicionar o programa principal à lista
+  APPEND VALUE #( name = p_prog ) TO lt_includes.
+
+  " Ler e exportar cada include separadamente
+  LOOP AT lt_includes INTO DATA(ls_include).
+    CLEAR lt_temp.
+
+    " Lê o código-fonte
+    READ REPORT ls_include-name INTO lt_temp.
+
+    " Define o nome do arquivo (caminho + nome do include + .txt)
+    CONCATENATE p_path '\' ls_include-name '.txt' INTO lv_filename.
+
+    " Faz o download
+    CALL FUNCTION 'GUI_DOWNLOAD'
+      EXPORTING
+        filename = lv_filename
+        filetype = 'ASC'
+      TABLES
+        data_tab = lt_temp
+      EXCEPTIONS
+        OTHERS   = 1.
+
+    IF sy-subrc = 0.
+      WRITE: / |Include { ls_include-name } exportado para { lv_filename }|.
+    ELSE.
+      WRITE: / |Erro ao exportar o include { ls_include-name }.|.
+    ENDIF.
+  ENDLOOP.
+
+
+*PARAMETERS: p_prog TYPE progname OBLIGATORY,
+*            p_path TYPE rlgrap-filename OBLIGATORY.
+*
+*DATA: lt_includes TYPE STANDARD TABLE OF trdir WITH EMPTY KEY,
+*      lt_source   TYPE STANDARD TABLE OF string WITH EMPTY KEY,
+*      lt_temp     TYPE STANDARD TABLE OF string WITH EMPTY KEY,
+*      lv_line     TYPE string,
+*      lv_filename TYPE string.
+*
+*START-OF-SELECTION.
+*
+*  " Obter includes do programa
+*  CALL FUNCTION 'RS_GET_ALL_INCLUDES'
+*    EXPORTING
+*      program          = p_prog
+*    TABLES
+*      includetab       = lt_includes
+*    EXCEPTIONS
+*      no_program_found = 1
+*      OTHERS           = 2.
+*
+*  IF sy-subrc <> 0.
+*    MESSAGE 'Programa não encontrado ou erro ao buscar includes' TYPE 'E'.
+*  ENDIF.
+*
+*  " Adicionar o programa principal à lista
+*  APPEND VALUE #( name = p_prog ) TO lt_includes.
+*
+*  " Ler conteúdo de cada include
+*  LOOP AT lt_includes INTO DATA(ls_include).
+*    CLEAR lt_temp.
+*
+*    " Lê o código-fonte
+*    READ REPORT ls_include-name INTO lt_temp.
+*
+*    " Adiciona cabeçalho do include
+*    APPEND |" ===== { ls_include-name } =====| TO lt_source.
+*
+*    LOOP AT lt_temp INTO lv_line.
+*      APPEND lv_line TO lt_source.
+*    ENDLOOP.
+*
+*    APPEND '' TO lt_source. " Linha em branco entre os includes
+*
+*  ENDLOOP.
+*
+*  " Nome do arquivo de saída
+*
+*  CONCATENATE p_path p_prog '.txt' INTO lv_filename.
+*
+*  " Download para o desktop
+*  CALL FUNCTION 'GUI_DOWNLOAD'
+*    EXPORTING
+*      filename = lv_filename
+*      filetype = 'ASC'
+*    TABLES
+*      data_tab = lt_source
+*    EXCEPTIONS
+*      OTHERS   = 1.
+*
+*  IF sy-subrc = 0.
+*    MESSAGE |Arquivo { lv_filename } exportado com sucesso.| TYPE 'S'.
+*  ELSE.
+*    MESSAGE 'Erro ao exportar o arquivo.' TYPE 'E'.
+*  ENDIF.
