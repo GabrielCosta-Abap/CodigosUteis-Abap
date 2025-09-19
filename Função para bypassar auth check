@@ -1,0 +1,3 @@
+Função para bypassar auth check:
+RS_HDSYS_CALL_TC_VARIANT
+(executar na se37 e remover flag "authority_check")
