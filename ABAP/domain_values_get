@@ -1,0 +1,4 @@
+  DATA(lt_values) = VALUE re_t_rsdomaval( ).
+
+  cl_reca_ddic_doma=>get_values( EXPORTING id_name   = 'ZSTD_STATUS_PPAP'
+                                 IMPORTING et_values = lt_values ).
